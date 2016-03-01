@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.org/baggepinnen/DifferentialDynamicProgramming.jl.svg?branch=master)](https://travis-ci.org/baggepinnen/DifferentialDynamicProgramming.jl)
 
+[![Coverage Status](https://coveralls.io/repos/github/baggepinnen/DifferentialDynamicProgramming.jl/badge.png?branch=master)](https://coveralls.io/github/baggepinnen/DifferentialDynamicProgramming.jl?branch=master)
+
 ## Demo functions
 The following demo functions are provided
 `demo_linear()` To run the iLQG DDP algorithm on a simple linear problem
