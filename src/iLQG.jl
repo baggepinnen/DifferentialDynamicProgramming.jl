@@ -387,7 +387,6 @@ function iLQG(f,fT,df, x0, u0;
 
 end
 
-
 function forward_pass(x0,u,L,x,du,Alpha,f,fT,lims,diff)
     #  parallel forward-pass (rollout)
     #  internally time is on the 3rd dimension,

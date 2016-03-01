@@ -195,6 +195,6 @@ function demoQP()
     H 		= H*H'
     lower 	= -ones(n,1)
     upper 	=  ones(n,1)
-    @time boxQP(H, g, lower, upper, randn(n,1),print=0)
+    @time boxQP(H, g, lower, upper, randn(n,1),print=1)
 
 end
