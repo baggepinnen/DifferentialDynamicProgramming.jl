@@ -4,6 +4,21 @@
 
 [![Coverage Status](https://coveralls.io/repos/github/baggepinnen/DifferentialDynamicProgramming.jl/badge.png?branch=master)](https://coveralls.io/github/baggepinnen/DifferentialDynamicProgramming.jl?branch=master)
 
+This code consists of a port and extensions of a MATLAB library provided by the autors of
+>BIBTeX:
+>@INPROCEEDINGS{
+>  author={Tassa, Y. and Mansard, N. and Todorov, E.},
+>  booktitle={Robotics and Automation (ICRA), 2014 IEEE International Conference on},
+>  title={Control-Limited Differential Dynamic Programming},
+>  year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}
+>}
+
+>http://www.cs.washington.edu/people/postdocs/tassa/
+
+All users of this package for academic purposes are encouraged to cite the original article.
+
+
+
 ## Demo functions
 The following demo functions are provided
 `demo_linear()` To run the iLQG DDP algorithm on a simple linear problem
@@ -71,11 +86,3 @@ df(x,u,i)  = lin_dyn_df(x,u,Q,R)
 ```
 
 
-This code consists of a port and extensions of a MATLAB library provided by the autors of
-BIBTeX:
-@INPROCEEDINGS{
-  author={Tassa, Y. and Mansard, N. and Todorov, E.},
-  booktitle={Robotics and Automation (ICRA), 2014 IEEE International Conference on},
-  title={Control-Limited Differential Dynamic Programming},
-  year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}
-  http://www.mathworks.com/matlabcentral/fileexchange/52069-ilqg-ddp-trajectory-optimization
