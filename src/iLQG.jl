@@ -107,12 +107,12 @@ defaults
 `lambdaFactor`,   1.6,           lambda scaling factor
 `lambdaMax`,      1e10,          lambda maximum value
 `lambdaMin`,      1e-6,          below this value lambda = 0
-`regType`,        1,             regularization type 1: q_uu+lambda*eye() 2: V_xx+lambda*eye()
+`regType`,        1,             regularization type 1: q_uu+lambda*I 2: V_xx+lambda*I
 `zMin`,           0,             minimal accepted reduction ratio
-`diffFn`,         [],            user-defined diff for sub-space optimization
+`diffFn`,         -,             user-defined diff for sub-space optimization
 `plot`,           1,             0: no  k>0: every k iters k<0: every k iters, with derivs window
-`print`,          2,             0: no  1: final 2: iter 3: iter, detailed
-`plotFn`,         x->0,         user-defined graphics callback
+`verbosity`,      2,             0: no  1: final 2: iter 3: iter, detailed
+`plotFn`,         x->0,          user-defined graphics callback
 `cost`,           [],            initial cost for pre-rolled trajectory
 
 This code consists of a port and extension of a MATLAB library provided by the autors of
@@ -134,9 +134,9 @@ function iLQG(f,fT,df, x0, u0;
     lambdaMin=      1e-6,
     regType=        1,
     zMin=           0,
-    diffFn=         [],
+    diffFn=         -,
     plot=           1,
-    print=          2,
+    verbosity=      2,
     plotFn=         x->0,
     cost=           [],
     )
@@ -148,9 +148,6 @@ function iLQG(f,fT,df, x0, u0;
     m   = size(u0, 1)          # dimension of control vector
     N   = size(u0, 2)          # number of state transitions
     u   = u0                   # initial control sequence
-
-    # --- proccess options
-    verbosity =  print
 
     # --- initialize trace data structure
     trace = [Trace() for i in 1:min( maxIter+1,1e6)]
@@ -410,11 +407,7 @@ function forward_pass(x0,u,L,x,du,Alpha,f,fT,lims,diff)
             unew[:,i] = unew[:,i] + du[:,i]*Alpha
         end
         if !isempty(L)
-            if !isempty(diff)
-                dx = diff(xnew[:,i], x[:,i])
-            else
-                dx = xnew[:,i] - x[:,i]
-            end
+            dx = diff(xnew[:,i], x[:,i])
             unew[:,i] = unew[:,i] + L[:,:,i]*dx
         end
         if !isempty(lims)
