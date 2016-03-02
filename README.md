@@ -6,8 +6,12 @@
 
 ## Demo functions
 The following demo functions are provided
+
 `demo_linear()` To run the iLQG DDP algorithm on a simple linear problem
+
 `demoQP` To solve a demo quadratic program
+
+If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
 
 ## Usage
 See demo file `demo_linear.jl` for a usage example.
@@ -30,7 +34,7 @@ R = .1*h*eye(m)
 lims = [] #ones(m,1)*[-1 1]*.6
 
 T        = 1000              # horizon
-x0       = ones(n,1)        # initial state
+x0       = ones(n,1)         # initial state
 u0       = .1*randn(m,T)     # initial controls
 
 # optimization problem
