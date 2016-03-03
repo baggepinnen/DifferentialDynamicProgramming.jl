@@ -253,8 +253,8 @@ function iLQG(f,fT,df, x0, u0;
         g_norm         = mean(maximum(abs(l) ./ (abs(u)+1),1))
         trace[iter].grad_norm = g_norm
         if g_norm <  tolGrad && lambda < 1e-5
-            dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
-            lambda    = lambda * dlambda * (lambda >  lambdaMin)
+            # dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
+            # lambda    = lambda * dlambda * (lambda >  lambdaMin)
             if verbosity > 0
                 @printf("\nSUCCESS: gradient norm < tolGrad\n")
             end
@@ -270,7 +270,6 @@ function iLQG(f,fT,df, x0, u0;
             tic()
             debug("#  serial backtracking line-search")
             for alpha =  Alpha
-                #  @show size(l), size(u), typeof(alpha)
                 (xnew,unew,costnew)   = forward_pass(x0[:,1] ,u+l*alpha, L, x,[],1,f,fT, lims, diffFn)
                 dcost    = sum(cost[:]) - sum(costnew[:])
                 expected = -alpha*(dV[1] + alpha*dV[2])
@@ -278,7 +277,7 @@ function iLQG(f,fT,df, x0, u0;
                     z = dcost/expected
                 else
                     z = sign(dcost)
-                    warn("non-positive expected reduction: should not occur")
+                    warn("negative expected reduction: should not occur")
                 end
                 if z > zMin
                     fwdPassDone = true
@@ -311,7 +310,7 @@ function iLQG(f,fT,df, x0, u0;
 
             #  decrease lambda
             dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
-            lambda    = lambda * dlambda * (lambda > lambdaMin)
+            lambda    = lambda * dlambda
 
             #  accept changes
             u              = unew

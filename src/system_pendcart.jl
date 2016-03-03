@@ -1,3 +1,5 @@
+using Control
+export demo_pendcart
 
 plotstuff_pendcart(args...) = println("Install package Plots.jl to plot results in the end of demo_pendcart")
 
@@ -9,15 +11,19 @@ function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
 
     Plots.subplot!(sp,x', title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Optimized", xlabel="Time step", legend=true)
     Plots.plot!(cp[1,1],u', legend=true, title="Control signal",lab="Optimized")
-    Plots.plot!(cp[1,2],cost[2:end], legend=true, title="Cost",lab="Optimized",xscale=:log10, xlabel="Time step")
+    Plots.plot!(cp[1,2],cost[2:end], legend=true, title="Cost",lab="Optimized", xlabel="Time step")
 
     totalcost = [ t.cost for t in otrace]
     iters = sum(totalcost .> 0)
     filter!(x->x>0,totalcost)
-    Plots.plot!(cp[1,3], totalcost,title="Total cost", xlabel="Iteration", legend=false)
+    Plots.plot!(cp[1,3], totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false)
 end
 end
 
+
+"""
+Run the iLQG function to find an optimal trajectory for the "pendulum on a cart system". Requires package Control.jl
+"""
 function demo_pendcart()
 
     function fsys_closedloop(t,x,L,xd)
@@ -38,7 +44,7 @@ function demo_pendcart()
     end
 
     function dfsys(x,u, t)
-        x + h*[x[2]; -g/l*sin(x[1])+u/l*cos(x[1]); x[4]; u]
+        [x[1]+h*x[2]; x[2]+h*(-g/l*sin(x[1])+u/l*cos(x[1])); x[3]+h*x[4]; x[4]+h*u]
     end
 
 
@@ -105,6 +111,7 @@ function demo_pendcart()
     function lin_dyn_df(x,u,i)
         u[isnan(u)] = 0
         D = size(x,1)
+        nu = size(u,1)
         fx = Array{Float64}(D,D)
         fu = Array{Float64}(D,1)
         cx,cu,cxu = dcost_quadratic(x,u)
@@ -116,6 +123,11 @@ function demo_pendcart()
         0 0 0 0]
 
         fu = [0, cos(x[1])/l, 0, 1]
+
+        ABd = expm([fx*h  fu*h; zeros(nu, D + nu)])# ZoH sampling
+        fx = ABd[1:D,1:D]
+        fu = ABd[1:D,D+1:D+nu]
+
         fxx=fxu=fuu = []
         return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     end
@@ -132,12 +144,18 @@ function demo_pendcart()
         for t = 2:T
             dx     = copy(x[:,t-1])
             dx[1] -= pi
-            u[t]   = clamp(-(L*dx)[1],lims[1],lims[2])
+            u[t]   = -(L*dx)[1]
+            if !isempty(lims)
+                u[t]   = clamp(u[t],lims[1],lims[2])
+            end
             x[:,t] = dfsys(x[:,t-1],u[t],0)
         end
         dx     = copy(x[:,T])
         dx[1] -= pi
-        uT     = clamp(-(L*dx)[1],lims[1],lims[2])
+        uT   = -(L*dx)[1]
+        if !isempty(lims)
+            uT   = clamp(uT,lims[1],lims[2])
+        end
         x[:,T+1] = dfsys(x[:,T],uT,0)
         c = cost(x,u)
 
@@ -145,15 +163,14 @@ function demo_pendcart()
     end
 
 
-
-    T     = 800                     # Number of time steps
+    T     = 600                     # Number of time steps
     N     = T+1
     g     = 9.82
     l     = 0.35                    # Length of pendulum
     h     = 0.01                    # Sample time
-    lims  = 20.0*[-1 1]             # control limits, e.g. ones(m,1)*[-1 1]*.6
+    lims  = 5.0*[-1 1]              # control limits, e.g. ones(m,1)*[-1 1]*.6
     goal  = [π,0,0,0]               # Reference point
-    A     = [0 1 0 0;               # Linearlized system dynamics matrix
+    A     = [0 1 0 0;               # Linearlized system dynamics matrix, continuous time
     g/l 0 0 0;
     0 0 0 1;
     0 0 0 0]
@@ -162,16 +179,14 @@ function demo_pendcart()
     D     = 4
 
     sys   = ss(A,B,C,zeros(4))
-    Q     = h*diagm([10,5,1,10])    # State weight matrix
+    Q     = h*diagm([10,1,2,1])     # State weight matrix
     R     = h*1                     # Control weight matrix
     L     = lqr(sys,Q,R)            # Calculate the optimal state feedback
-    L    += abs(0.2L).*randn(size(L))
 
-    x0 = [π-0.1,0,0,0]
-
+    x0 = [π-0.6,0,0,0]
 
 
-    # Simulate the closed loop system to get a reasonable initial trajectory
+    # Simulate the closed loop system with regular LQG control and watch it fail due to control limits
     x00, u00, cost00 = simulate_pendcart(x0, L, dfsys, cost_quadratic)
 
 
@@ -188,15 +203,18 @@ function demo_pendcart()
 
     # run the optimization
     println("Entering iLQG function")
-    @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x00, u00,
+    # subplot(n=4,nc=2)
+    x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, 0*u00,
     lims=lims,
-    cost=cost00,
-    plotFn= x -> 0,
+    # plotFn= x -> Plots.subplot!(x'),
     regType=2,
-    Alpha= logspace(0,-10,20),
-    verbosity=10,
-    lambdaMax=1e20);
+    Alpha= logspace(0.2,-3,6),
+    verbosity=3,
+    tolFun = 1e-7,
+    maxIter=1000);
 
     plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
+    println("Done")
+
     return nothing
 end

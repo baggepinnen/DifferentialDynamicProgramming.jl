@@ -14,6 +14,7 @@ The following demo functions are provided
 If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
 
 ## Usage
+### Demo linear
 See demo file `demo_linear.jl` for a usage example.
 
 ```julia
@@ -73,6 +74,17 @@ df(x,u,i)  = lin_dyn_df(x,u,Q,R)
 # run the optimization
 @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0, lims=lims, plotFn= x -> 0 );
 ```
+
+
+
+### Demo pendulum on cart
+If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated. In this example, regular LQG control fails in stabilizing the pendulum at the upright position due to control limitations. The DDP-based optimization solves this by letting the pendulum fall, and increases the energy in the pendulum during the fall such that it will stay upright after one revolution.
+
+![window](images/states_pendcart.png)
+![window](images/control_pendcart.png)
+
+
+
 
 
 This code consists of a port and extensions of a MATLAB library provided by the autors of
