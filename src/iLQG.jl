@@ -29,118 +29,117 @@ end
 
 
 """
-  iLQG - solve the deterministic finite-horizon optimal control problem.
+iLQG - solve the deterministic finite-horizon optimal control problem.
 
-             minimize sum_i CST(x(:,i),u(:,i)) + CST(x(:,end))
-                 u
-             s.t.  x[:,i+1] = DYN(x(:,i),u(:,i))
+minimize sum_i cost(x[:,i],u[:,i]) + cost(x[:,end])
+s.t.  x[:,i+1] = f(x[:,i],u[:,i])
 
-      Inputs
-      ======
-      f, fT, df
+Inputs
+======
+`f, fT, df`
 
-       1) step:
-        (xnew,c) = f(x,u,i) is called during the forward pass.
-        Here the state x and control u are vectors: size(x)==[n 1],
-        size(u)==[m 1]. The cost c and time index i are scalars.
-        If Op.parallel==true (the default) then DYNCST(x,u,i) is be
-        assumed to accept vectorized inputs: size(x,2)==size(u,2)==K
+1) step:
+`xnew,cost = f(x,u,i)` is called during the forward pass.
+Here the state x and control u are vectors: size(x)==(n,1),
+size(u)==(m,1). The cost and time index `i` are scalars.
 
-       2) final:
-        cnew = fT(x) is called at the end the forward pass to compute
-        the final cost. The nans indicate that no controls are applied.
 
-       3) derivatives:
-        (fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu) = df(x,u,I) computes the
-        derivatives along a trajectory. In this case size(x)==[n N+1] where N
-        is the trajectory length. size(u)==[m N+1] with NaNs in the last column
-        to indicate final-cost. The time indexes are I=(1:N).
-        Dimensions match the variable names e.g. size(fxu)==[n n m N+1]
-        note that the last temporal element N+1 is ignored for all tensors
-        except cx and cxx, the final-cost derivatives.
+2) final:
+`cost = fT(x)` is called at the end the forward pass to compute
+the final cost.
 
-      x0 - The initial state from which to solve the control problem.
-      Should be a column vector. If a pre-rolled trajectory is available
-      then size(x0)==[n N+1] can be provided and [1] cost set accordingly.
+3) derivatives:
+`fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x,u,I)` computes the
+derivatives along a trajectory. In this case size(x)==(n, N+1) where N
+is the trajectory length. size(u)==(m, N+1) with NaNs in the last column
+to indicate final-cost. The time indexes are I=(1:N).
+Dimensions match the variable names e.g. size(fxu)==(n, n, m, N+1)
+note that the last temporal element N+1 is ignored for all tensors
+except cx and cxx, the final-cost derivatives.
+If cost function or system is time invariant, the dimension of the corresponding
+derivatives can be reduced by dropping the time dimension
 
-      u0 - The initial control sequence. A matrix of size(u0)==[m N]
-      where m is the dimension of the control and N is the number of state
-      transitions.
+`x0` - The initial state from which to solve the control problem.
+Should be a column vector. If a pre-rolled trajectory is available
+then size(x0)==(n, N+1) can be provided and cost set accordingly.
 
-      Outputs
-      =======
-      x - the optimal state trajectory found by the algorithm.
-          size(x)==[n N+1]
+`u0` - The initial control sequence. A matrix of size(u0)==(m, N)
+where m is the dimension of the control and N is the number of state
+transitions.
 
-      u - the optimal open-loop control sequence.
-          size(u)==[m N]
+Outputs
+=======
+`x` - the optimal state trajectory found by the algorithm.
+size(x)==(n, N+1)
 
-      L - the optimal closed loop control gains. These gains multiply the
-          deviation of a simulated trajectory from the nominal trajectory x.
-          size(L)==[m n N]
+`u` - the optimal open-loop control sequence.
+size(u)==(m, N)
 
-      Vx - the gradient of the cost-to-go. size(Vx)==[n N+1]
+`L` - the optimal closed loop control gains. These gains multiply the
+deviation of a simulated trajectory from the nominal trajectory x.
+size(L)==(m, n N)
 
-      Vxx - the Hessian of the cost-to-go. size(Vxx)==[n n N+1]
+`Vx` - the gradient of the cost-to-go. size(Vx)==(n, N+1)
 
-      cost - the costs along the trajectory. size(cost)==[1 N+1]
-             the cost-to-go is V = fliplr(cumsum(fliplr(cost)))
+`Vxx` - the Hessian of the cost-to-go. size(Vxx)==(n, n N+1)
 
-      lambda - the final value of the regularization parameter
+`cost` - the costs along the trajectory. size(cost)==(1, N+1)
+the cost-to-go is V = fliplr(cumsum(fliplr(cost)))
 
-      trace - a trace of various convergence-related values. One row for each
-              iteration, the columns of trace are
-              [iter lambda alpha g_norm dcost z sum(cost) dlambda]
-              see below for details.
+`lambda` - the final value of the regularization parameter
 
-      timing - timing information
-         ---------------------- user-adjustable parameters ------------------------
-     defaults = lims',           [],...            control limits
-                Alpha',          10.^linspace(0,-3,11),... backtracking coefficients
-                tolFun',         1e-7,...          reduction exit criterion
-                tolGrad',        1e-4,...          gradient exit criterion
-                maxIter',        500,...           maximum iterations
-                lambda',         1,...             initial value for lambda
-                dlambda',        1,...             initial value for dlambda
-                lambdaFactor',   1.6,...           lambda scaling factor
-                lambdaMax',      1e10,...          lambda maximum value
-                lambdaMin',      1e-6,...          below this value lambda = 0
-                regType',        1,...             regularization type 1: q_uu+lambda*eye() 2: V_xx+lambda*eye()
-                zMin',           0,...             minimal accepted reduction ratio
-                diffFn',         [],...            user-defined diff for sub-space optimization
-                plot',           1,...             0: no  k>0: every k iters k<0: every k iters, with derivs window
-                print',          2,...             0: no  1: final 2: iter 3: iter, detailed
-                plotFn',         @(x)0,...         user-defined graphics callback
-                cost',           [],...            initial cost for pre-rolled trajectory
+`trace` - a trace of various convergence-related values. One row for each
+iteration, the columns of trace are
+`[iter lambda alpha g_norm dcost z sum(cost) dlambda]`
+see below for details.
+
+`timing` - timing information
+---------------------- user-adjustable parameters ------------------------
+defaults
+
+`lims`,           [],            control limits
+`Alpha`,          logspace(0,-3,11), backtracking coefficients
+`tolFun`,         1e-7,          reduction exit criterion
+`tolGrad`,        1e-4,          gradient exit criterion
+`maxIter`,        500,           maximum iterations
+`lambda`,         1,             initial value for lambda
+`dlambda`,        1,             initial value for dlambda
+`lambdaFactor`,   1.6,           lambda scaling factor
+`lambdaMax`,      1e10,          lambda maximum value
+`lambdaMin`,      1e-6,          below this value lambda = 0
+`regType`,        1,             regularization type 1: q_uu+lambda*I 2: V_xx+lambda*I
+`zMin`,           0,             minimal accepted reduction ratio
+`diffFn`,         -,             user-defined diff for sub-space optimization
+`plot`,           1,             0: no  k>0: every k iters k<0: every k iters, with derivs window
+`verbosity`,      2,             0: no  1: final 2: iter 3: iter, detailed
+`plotFn`,         x->0,          user-defined graphics callback
+`cost`,           [],            initial cost for pre-rolled trajectory
 
 This code consists of a port and extension of a MATLAB library provided by the autors of
- BIBTeX:
- @INPROCEEDINGS{
- author={Tassa, Y. and Mansard, N. and Todorov, E.},
- booktitle={Robotics and Automation (ICRA), 2014 IEEE International Conference on},
- title={Control-Limited Differential Dynamic Programming},
- year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}
+`   INPROCEEDINGS{author={Tassa, Y. and Mansard, N. and Todorov, E.},
+booktitle={Robotics and Automation (ICRA), 2014 IEEE International Conference on},
+title={Control-Limited Differential Dynamic Programming},
+year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}`
 """
-
 function iLQG(f,fT,df, x0, u0;
-              lims=           [],
-              Alpha=          10.^linspace(0,-3,11),
-              tolFun=         1e-7,
-              tolGrad=        1e-4,
-              maxIter=        500,
-              lambda=         1,
-              dlambda=        1,
-              lambdaFactor=   1.6,
-              lambdaMax=      1e10,
-              lambdaMin=      1e-6,
-              regType=        1,
-              zMin=           0,
-              diffFn=         [],
-              plot=           1,
-              print=          2,
-              plotFn=         x->0,
-              cost=           [],
-              )
+    lims=           [],
+    Alpha=          logspace(0,-3,11),
+    tolFun=         1e-7,
+    tolGrad=        1e-4,
+    maxIter=        500,
+    lambda=         1,
+    dlambda=        1,
+    lambdaFactor=   1.6,
+    lambdaMax=      1e10,
+    lambdaMin=      1e-6,
+    regType=        1,
+    zMin=           0,
+    diffFn=         -,
+    plot=           1,
+    verbosity=      2,
+    plotFn=         x->0,
+    cost=           [],
+    )
     debug("Entering iLQG")
 
 
@@ -149,9 +148,6 @@ function iLQG(f,fT,df, x0, u0;
     m   = size(u0, 1)          # dimension of control vector
     N   = size(u0, 2)          # number of state transitions
     u   = u0                   # initial control sequence
-
-    # --- proccess options
-    verbosity =  print
 
     # --- initialize trace data structure
     trace = [Trace() for i in 1:min( maxIter+1,1e6)]
@@ -185,7 +181,7 @@ function iLQG(f,fT,df, x0, u0;
     trace[1].cost = sum(cost)
 
     # user plotting
-#     plotFn(x)
+    #     plotFn(x)
 
     if diverge
         Vx=Vxx   = NaN
@@ -207,7 +203,8 @@ function iLQG(f,fT,df, x0, u0;
     last_head   = print_head
     g_norm      = Vector{Float64}()
     t_start     = time()
-    verbosity > 0 && @printf "\n=========== begin iLQG ===========\n"
+    verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")
+
 
     iter = 1
     while iter <= maxIter
@@ -220,6 +217,10 @@ function iLQG(f,fT,df, x0, u0;
             flgChange   = false
         end
 
+        # Determine what kind of system we are dealing with
+        linearsys = isempty(fxx) && isempty(fxu) && isempty(fuu)
+
+
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         backPassDone   = false
         l = Matrix{Float64}()
@@ -227,7 +228,11 @@ function iLQG(f,fT,df, x0, u0;
         while !backPassDone
 
             tic()
-            (diverge, Vx, Vxx, l, L, dV) = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,lambda, regType, lims,u)
+            if linearsys
+                (diverge, Vx, Vxx, l, L, dV) = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,lambda, regType, lims,u)
+            else
+                (diverge, Vx, Vxx, l, L, dV) = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,lambda, regType, lims,u)
+            end
             trace[iter].time_backward = toq()
 
             if diverge > 0
@@ -248,8 +253,8 @@ function iLQG(f,fT,df, x0, u0;
         g_norm         = mean(maximum(abs(l) ./ (abs(u)+1),1))
         trace[iter].grad_norm = g_norm
         if g_norm <  tolGrad && lambda < 1e-5
-            dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
-            lambda    = lambda * dlambda * (lambda >  lambdaMin)
+            # dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
+            # lambda    = lambda * dlambda * (lambda >  lambdaMin)
             if verbosity > 0
                 @printf("\nSUCCESS: gradient norm < tolGrad\n")
             end
@@ -265,7 +270,6 @@ function iLQG(f,fT,df, x0, u0;
             tic()
             debug("#  serial backtracking line-search")
             for alpha =  Alpha
-                #  @show size(l), size(u), typeof(alpha)
                 (xnew,unew,costnew)   = forward_pass(x0[:,1] ,u+l*alpha, L, x,[],1,f,fT, lims, diffFn)
                 dcost    = sum(cost[:]) - sum(costnew[:])
                 expected = -alpha*(dV[1] + alpha*dV[2])
@@ -273,7 +277,7 @@ function iLQG(f,fT,df, x0, u0;
                     z = dcost/expected
                 else
                     z = sign(dcost)
-                    warn("non-positive expected reduction: should not occur")
+                    warn("negative expected reduction: should not occur")
                 end
                 if z > zMin
                     fwdPassDone = true
@@ -300,13 +304,13 @@ function iLQG(f,fT,df, x0, u0;
             #  print status
             if verbosity > 1
                 @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f\n",
-                        iter, sum(cost[:]), dcost, expected, g_norm, log10(lambda))
+                iter, sum(cost[:]), dcost, expected, g_norm, log10(lambda))
                 last_head += 1
             end
 
             #  decrease lambda
             dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
-            lambda    = lambda * dlambda * (lambda > lambdaMin)
+            lambda    = lambda * dlambda
 
             #  accept changes
             u              = unew
@@ -328,7 +332,7 @@ function iLQG(f,fT,df, x0, u0;
             #  print status
             if verbosity > 1
                 @printf("%-12d%-12s%-12.3g%-12.3g%-12.3g%-12.1f\n",
-                        iter,"NO STEP", dcost, expected, g_norm, log10(lambda))
+                iter,"NO STEP", dcost, expected, g_norm, log10(lambda))
                 last_head = last_head+1
             end
 
@@ -367,30 +371,25 @@ function iLQG(f,fT,df, x0, u0;
         if verbosity > 0
             info = 100/total_t*[diff_t, back_t, fwd_t, (total_t-diff_t-back_t-fwd_t)]
             @printf("\n iterations:   %-3d\n
-                     final cost:   %-12.7g\n
-                     final grad:   %-12.7g\n
-                     final lambda: %-12.7e\n
-                     time / iter:  %-5.0f ms\n
-                     total time:   %-5.2f seconds, of which\n
-                     derivs:     %-4.1f%%\n
-                     back pass:  %-4.1f%%\n
-                     fwd pass:   %-4.1f%%\n
-                     other:      %-4.1f%% (graphics etc.)\n =========== end iLQG ===========\n",iter,sum(cost[:]),g_norm,lambda,1e3*total_t/iter,total_t,info[1],info[2],info[3],info[4])
+            final cost:   %-12.7g\n
+            final grad:   %-12.7g\n
+            final lambda: %-12.7e\n
+            time / iter:  %-5.0f ms\n
+            total time:   %-5.2f seconds, of which\n
+            derivs:     %-4.1f%%\n
+            back pass:  %-4.1f%%\n
+            fwd pass:   %-4.1f%%\n
+            other:      %-4.1f%% (graphics etc.)\n =========== end iLQG ===========\n",iter,sum(cost[:]),g_norm,lambda,1e3*total_t/iter,total_t,info[1],info[2],info[3],info[4])
         end
     else
         error("Failure: no iterations completed, something is wrong.")
     end
-
-
 
     return x, u, L, Vx, Vxx, cost, trace
 
 end
 
 function forward_pass(x0,u,L,x,du,Alpha,f,fT,lims,diff)
-    #  parallel forward-pass (rollout)
-    #  internally time is on the 3rd dimension,
-    #  to facillitate vectorized dynamics calls
 
     n        = size(x0,1)
     m        = size(u,1)
@@ -407,11 +406,7 @@ function forward_pass(x0,u,L,x,du,Alpha,f,fT,lims,diff)
             unew[:,i] = unew[:,i] + du[:,i]*Alpha
         end
         if !isempty(L)
-            if !isempty(diff)
-                dx = diff(xnew[:,i], x[:,i])
-            else
-                dx = xnew[:,i] - x[:,i]
-            end
+            dx = diff(xnew[:,i], x[:,i])
             unew[:,i] = unew[:,i] + L[:,:,i]*dx
         end
         if !isempty(lims)
@@ -424,11 +419,9 @@ function forward_pass(x0,u,L,x,du,Alpha,f,fT,lims,diff)
     return xnew,unew,cnew
 end
 
+vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
-function back_pass{T}(cx,cu,cxx::Array{T,3},cxu,cuu,fx,fu,fxx,fxu,fuu,lambda,regType,lims,u) # nonlinear time variant
-    #  Perform the Ricatti-Mayne backward pass
-    #  tensor multiplication for DDP terms
-    vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) # nonlinear time variant
 
     (m,N)  = size(u)
     n  = Int(length(cx)/N)
@@ -526,10 +519,7 @@ function back_pass{T}(cx,cu,cxx::Array{T,3},cxu,cuu,fx,fu,fxx,fxu,fuu,lambda,reg
 end
 
 
-function back_pass{T}(cx,cu,cxx::Array{T,2},cxu,cuu,fx,fu,fxx,fxu,fuu,lambda,regType,lims,u) # quadratic timeinvariant cost, dynamics nonlinear time variant
-    #  Perform the Ricatti-Mayne backward pass
-    #  tensor multiplication for DDP terms
-    vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) # quadratic timeinvariant cost, dynamics nonlinear time variant
 
     m     = size(u,1)
     n     = size(fx,1)
@@ -627,11 +617,7 @@ function back_pass{T}(cx,cu,cxx::Array{T,2},cxu,cuu,fx,fu,fxx,fxu,fuu,lambda,reg
     return diverge, Vx, Vxx, k, K, dV
 end
 
-function back_pass{T}(cx,cu,cxx::Array{T,2},cxu,cuu,fx,fu,fxx,fxu,fuu,lambda,regType,lims,u) # quadratic timeinvariant cost, linear but not time-invariant dynamics
-    #  Perform the Ricatti-Mayne backward pass
-    #  tensor multiplication for DDP terms
-    vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
-
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,lambda,regType,lims,u) # quadratic timeinvariant cost, linear time variant dynamics
     m     = size(u,1)
     n     = size(fx,1)
     N     = Int(length(cx)/n)
@@ -705,9 +691,8 @@ function back_pass{T}(cx,cu,cxx::Array{T,2},cxu,cuu,fx,fu,fxx,fxu,fuu,lambda,reg
     return diverge, Vx, Vxx, k, K, dV
 end
 
-function back_pass{T}(cx,cu,cxx::Array{T,2},cxu,cuu,fx::Matrix{T},fu,fxx,fxu,fuu,lambda,regType,lims,u) # cost quadratic and cost and LTI dynamics
-    #  Perform the Ricatti-Mayne backward pass
-    #  tensor multiplication for DDP terms
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,lambda,regType,lims,u) # cost quadratic and cost and LTI dynamics
+
     vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
     m  = size(u,1)

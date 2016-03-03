@@ -1,7 +1,7 @@
-plotstuff(args...) = println("Install package Plots.jl to plot results in the end of demo_linear")
+plotstuff_linear(args...) = println("Install package Plots.jl to plot results in the end of demo_linear")
 
 @require Plots begin
-function plotstuff(x,u,cost,totalcost)
+function plotstuff_linear(x,u,cost,totalcost)
     p = Plots.subplot(n=4,nc=2)
     Plots.plot!(p[1,1],x', title="State Trajectories",legend=false)
     Plots.plot!(p[1,2],cost',c=:black,linewidth=3, title="Cost", xlabel="Time step")
@@ -72,11 +72,11 @@ function demo_linear()
     # run the optimization
     @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0, lims=lims, plotFn= x -> 0 );
 
-    totalcost = [ otrace[i].cost for i=1:length(otrace)]
+    totalcost = [ t.cost for t in otrace]
     iters = sum(totalcost .> 0)
     totalcost = [ otrace[i].cost for i=1:iters]
 
 
-    plotstuff(x,u,cost,totalcost)
+    plotstuff_linear(x,u,cost,totalcost)
 
 end

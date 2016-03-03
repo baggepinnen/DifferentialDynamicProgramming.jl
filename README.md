@@ -21,10 +21,15 @@ All users of this package for academic purposes are encouraged to cite the origi
 
 ## Demo functions
 The following demo functions are provided
+
 `demo_linear()` To run the iLQG DDP algorithm on a simple linear problem
+
 `demoQP` To solve a demo quadratic program
 
+If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
+
 ## Usage
+### Demo linear
 See demo file `demo_linear.jl` for a usage example.
 
 ```julia
@@ -45,7 +50,7 @@ R = .1*h*eye(m)
 lims = [] #ones(m,1)*[-1 1]*.6
 
 T        = 1000              # horizon
-x0       = ones(n,1)        # initial state
+x0       = ones(n,1)         # initial state
 u0       = .1*randn(m,T)     # initial controls
 
 # optimization problem
@@ -84,5 +89,14 @@ df(x,u,i)  = lin_dyn_df(x,u,Q,R)
 # run the optimization
 @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0, lims=lims, plotFn= x -> 0 );
 ```
+
+
+
+### Demo pendulum on cart
+If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated. In this example, regular LQG control fails in stabilizing the pendulum at the upright position due to control limitations. The DDP-based optimization solves this by letting the pendulum fall, and increases the energy in the pendulum during the fall such that it will stay upright after one revolution.
+
+![window](images/states_pendcart.png)
+![window](images/control_pendcart.png)
+
 
 
