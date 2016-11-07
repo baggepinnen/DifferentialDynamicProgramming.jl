@@ -8,7 +8,7 @@ export QPTrace, boxQP, demoQP, Trace, iLQG, demo_linear
 include("boxQP.jl")
 include("iLQG.jl")
 include("demo_linear.jl")
-@require Control include("system_pendcart.jl")
+@require ControlSystems include("system_pendcart.jl")
 
 function debug(x)
     DEBUG && print_with_color(:blue, string(x),"\n")

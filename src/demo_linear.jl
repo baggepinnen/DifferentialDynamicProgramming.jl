@@ -2,19 +2,17 @@ plotstuff_linear(args...) = println("Install package Plots.jl to plot results in
 
 @require Plots begin
 function plotstuff_linear(x,u,cost,totalcost)
-    p = Plots.subplot(n=4,nc=2)
-    Plots.plot!(p[1,1],x', title="State Trajectories",legend=false)
-    Plots.plot!(p[1,2],cost',c=:black,linewidth=3, title="Cost", xlabel="Time step")
-    Plots.plot!(p[2,1],u',title="Control signals")
-    Plots.plot!(p[2,2],totalcost,title="Total cost")
+    p = Plots.plot(layout=(2,2))
+    Plots.plot!(p,x', title="State Trajectories", xlabel="Time step",legend=false, subplot=1, show=false)
+    Plots.plot!(p,cost,c=:black,linewidth=3, title="Cost", xlabel="Time step", subplot=2, show=false)
+    Plots.plot!(p,u',title="Control signals", xlabel="Time step", subplot=3, show=false)
+    Plots.plot!(p,totalcost,title="Total cost", xlabel="Iteration", subplot=4, show=false)
+    Plots.gui()
 end
 end
 
 
-
-
-
-function demo_linear()
+function demo_linear(;kwargs...)
     println("Running linear demo function for DifferentialDynamicProgramming.jl")
 
     # make stable linear dynamics
@@ -70,7 +68,7 @@ function demo_linear()
     # plotFn(x)  = plot(squeeze(x,2)')
 
     # run the optimization
-    @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0, lims=lims, plotFn= x -> 0 );
+    @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0; lims=lims, plotFn= x -> 0 ,kwargs...);
 
     totalcost = [ t.cost for t in otrace]
     iters = sum(totalcost .> 0)
