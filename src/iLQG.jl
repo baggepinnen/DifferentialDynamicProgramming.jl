@@ -175,7 +175,7 @@ function iLQG(f,fT,df, x0, u0;
         diverge  = false
         isempty(cost) && error("Initial trajectory supplied, initial cost must also be supplied")
     else
-        error("pre-rolled initial trajectory must be of correct length")
+        error("pre-rolled initial trajectory must be of correct length (size(x0,2) == N+1)")
     end
 
     trace[1].cost = sum(cost)
@@ -212,26 +212,26 @@ function iLQG(f,fT,df, x0, u0;
         # ====== STEP 1: differentiate dynamics and cost along new trajectory
         if flgChange
             tic()
-            (fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu)   = df(x, u , 1:N)
+            fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u , 1:N)
             trace[iter].time_derivs = toq()
             flgChange   = false
         end
 
         # Determine what kind of system we are dealing with
         linearsys = isempty(fxx) && isempty(fxu) && isempty(fuu)
-
+        debug("linear system: $linearsys")
 
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         backPassDone   = false
         l = Matrix{Float64}()
-        dV = Array{Float64,1}()
+        dV = Vector{Float64}()
         while !backPassDone
 
             tic()
             if linearsys
-                (diverge, Vx, Vxx, l, L, dV) = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,lambda, regType, lims,u)
+                diverge, Vx, Vxx, l, L, dV = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,lambda, regType, lims,u)
             else
-                (diverge, Vx, Vxx, l, L, dV) = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,lambda, regType, lims,u)
+                diverge, Vx, Vxx, l, L, dV = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,lambda, regType, lims,u)
             end
             trace[iter].time_backward = toq()
 
@@ -241,16 +241,14 @@ function iLQG(f,fT,df, x0, u0;
                 end
                 dlambda   = max(dlambda *  lambdaFactor,  lambdaFactor)
                 lambda    = max(lambda * dlambda,  lambdaMin)
-                if lambda >  lambdaMax
-                    break
-                end
+                if lambda >  lambdaMax; break; end
                 continue
             end
-            backPassDone      = true
+            backPassDone = true
         end
 
         #  check for termination due to small gradient
-        g_norm         = mean(maximum(abs(l) ./ (abs(u)+1),1))
+        g_norm = mean(maximum(abs(l) ./ (abs(u)+1),1))
         trace[iter].grad_norm = g_norm
         if g_norm <  tolGrad && lambda < 1e-5
             # dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
@@ -270,8 +268,8 @@ function iLQG(f,fT,df, x0, u0;
             tic()
             debug("#  serial backtracking line-search")
             for alpha =  Alpha
-                (xnew,unew,costnew)   = forward_pass(x0[:,1] ,u+l*alpha, L, x,[],1,f,fT, lims, diffFn)
-                dcost    = sum(cost[:]) - sum(costnew[:])
+                xnew,unew,costnew   = forward_pass(x0[:,1] ,u+l*alpha, L, x,[],1,f,fT, lims, diffFn)
+                dcost    = sum(cost) - sum(costnew)
                 expected = -alpha*(dV[1] + alpha*dV[2])
                 if expected > 0
                     z = dcost/expected
@@ -304,7 +302,7 @@ function iLQG(f,fT,df, x0, u0;
             #  print status
             if verbosity > 1
                 @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f\n",
-                iter, sum(cost[:]), dcost, expected, g_norm, log10(lambda))
+                iter, sum(cost), dcost, expected, g_norm, log10(lambda))
                 last_head += 1
             end
 
@@ -337,7 +335,7 @@ function iLQG(f,fT,df, x0, u0;
             end
 
             #  terminate ?
-            if lambda >  lambdaMax
+            if lambda > lambdaMax
                 verbosity > 0 && @printf("\nEXIT: lambda > lambdaMax\n")
                 break
             end
@@ -347,7 +345,7 @@ function iLQG(f,fT,df, x0, u0;
         trace[iter].dlambda     = dlambda
         trace[iter].alpha       = alpha
         trace[iter].improvement = dcost
-        trace[iter].cost        = sum(cost[:])
+        trace[iter].cost        = sum(cost)
         trace[iter].reduc_ratio = z
         graphics( plot,x,u,cost,L,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
         iter += 1
@@ -419,12 +417,79 @@ function forward_pass(x0,u,L,x,du,Alpha,f,fT,lims,diff)
     return xnew,unew,cnew
 end
 
+macro end_backward_pass()
+    quote
+        if isempty(lims) || lims[1,1] > lims[1,2]
+            debug("#  no control limits: Cholesky decomposition, check for non-PD")
+            try
+                R = chol(Hermitian(QuuF))
+            catch
+                diverge  = i
+                return diverge, Vx, Vxx, k, K, dV
+            end
+
+            debug("#  find control law")
+            kK = -R\(R'\[Qu Qux_reg])
+            k_i = kK[:,1]
+            K_i = kK[:,2:n+1]
+        else
+            debug("#  solve Quadratic Program")
+            lower = lims[:,1]-u[:,i]
+            upper = lims[:,2]-u[:,i]
+
+            k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
+            if result < 1
+                diverge  = i
+                return diverge, Vx, Vxx, k, K, dV
+            end
+            K_i  = zeros(m,n)
+            if any(free)
+                Lfree         = -R\(R'\Qux_reg[free,:])
+                K_i[free,:]   = Lfree
+            end
+        end
+        debug("#  update cost-to-go approximation")
+        dV          = dV + [k_i'Qu; .5*k_i'Quu*k_i]
+        Vx[:,i]     = Qx  + K_i'Quu*k_i + K_i'Qu  + Qux'k_i
+        Vxx[:,:,i]  = Qxx + K_i'Quu*K_i + K_i'Qux + Qux'K_i
+        Vxx[:,:,i]  = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
+
+        debug("#  save controls/gains")
+        k[:,i]      = k_i
+        K[:,:,i]    = K_i
+    end |> esc
+end
+
+macro setupQTIC()
+    quote
+        m     = size(u,1)
+        n     = size(fx,1)
+        N     = length(cx) ÷ n
+
+        cx    = reshape(cx,  (n, N))
+        cu    = reshape(cu,  (m, N-1))
+        cxx   = reshape(cxx, (n, n))
+        cxu   = reshape(cxu, (n, m))
+        cuu   = reshape(cuu, (m, m))
+
+        k     = zeros(m,N-1)
+        K     = zeros(m,n,N-1)
+        Vx    = zeros(n,N)
+        Vxx   = zeros(n,n,N)
+        dV    = [0., 0.]
+
+        Vx[:,N]     = cx[:,N]
+        Vxx[:,:,N]  = cxx
+        diverge  = 0
+    end |> esc
+end
+
 vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) # nonlinear time variant
 
     (m,N)  = size(u)
-    n  = Int(length(cx)/N)
+    n  = length(cx) ÷ N
 
     cx    = reshape(cx,  (n, N))
     cu    = reshape(cu,  (m, N))
@@ -436,83 +501,46 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     K     = zeros(m,n,N-1)
     Vx    = zeros(n,N)
     Vxx   = zeros(n,n,N)
-    dV    = [0, 0]
+    dV    = [0., 0.]
 
     Vx[:,N]     = cx[:,N]
     Vxx[:,:,N]  = cxx[:,:,N]
 
     diverge  = 0
     for i = N-1:-1:1
-        Qu  = cu[:,i]      + fu[:,:,i]'*Vx[:,i+1]
-        Qx  = cx[:,i]      + fx[:,:,i]'*Vx[:,i+1]
-        Qux = cxu[:,:,i]'  + fu[:,:,i]'*Vxx[:,:,i+1]*fx[:,:,i]
+        Qu  = cu[:,i]      + fu[:,:,i]'Vx[:,i+1]
+        Qx  = cx[:,i]      + fx[:,:,i]'Vx[:,i+1]
+        Qux = cxu[:,:,i]'  + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         if !isempty(fxu)
             fxuVx = vectens(Vx[:,i+1],fxu[:,:,:,i])
             Qux   = Qux + fxuVx
         end
 
-        Quu = cuu[:,:,i]   + fu[:,:,i]'*Vxx[:,:,i+1]*fu[:,:,i]
+        Quu = cuu[:,:,i]   + fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
         if !isempty(fuu)
             fuuVx = vectens(Vx[:,i+1],fuu[:,:,:,i])
             Quu   = Quu + fuuVx
         end
 
-        Qxx = cxx[:,:,i]   + fx[:,:,i]'*Vxx[:,:,i+1]*fx[:,:,i]
+        Qxx = cxx[:,:,i]   + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         if !isempty(fxx)
             Qxx = Qxx + vectens(Vx[:,i+1],fxx[:,:,:,i])
         end
 
         Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? lambda*eye(n) : 0)
 
-        Qux_reg = cxu[:,:,i]'   + fu[:,:,i]'*Vxx_reg*fx[:,:,i]
+        Qux_reg = cxu[:,:,i]'   + fu[:,:,i]'Vxx_reg*fx[:,:,i]
         if !isempty(fxu)
             Qux_reg = Qux_reg + fxuVx
         end
 
-        QuuF = cuu[:,:,i]  + fu[:,:,i]'*Vxx_reg*fu[:,:,i] + (regType == 1 ? lambda*eye(m) : 0)
+        QuuF = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? lambda*eye(m) : 0)
 
         if !isempty(fuu)
             QuuF = QuuF + fuuVx
         end
 
-        if isempty(lims) || lims[1,1] > lims[1,2]
-            debug("#  no control limits: Cholesky decomposition, check for non-PD")
-            try
-                R = chol(QuuF)
-            catch
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-
-            debug("#  find control law")
-            kK = -R\(R'\[Qu Qux_reg])
-            k_i = kK[:,1]
-            K_i = kK[:,2:n+1]
-        else  debug("#  solve Quadratic Program")
-            lower = lims[:,1]-u[:,i]
-            upper = lims[:,2]-u[:,i]
-
-            k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
-            if result < 1
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-            K_i  = zeros(m,n)
-            if any(free)
-                Lfree         = -R\(R'\Qux_reg[free,:])
-                K_i[free,:]   = Lfree
-            end
-        end
-
-        debug("#  update cost-to-go approximation")
-        dV          = dV + [k_i'*Qu; .5*k_i'*Quu*k_i]
-        Vx[:,i]     = Qx  + K_i'*Quu*k_i + K_i'*Qu  + Qux'*k_i
-        Vxx[:,:,i]  = Qxx + K_i'*Quu*K_i + K_i'*Qux + Qux'*K_i
-        Vxx[:,:,i]  = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
-
-        debug("#  save controls/gains")
-        k[:,i]      = k_i
-        K[:,:,i]    = K_i
+        @end_backward_pass
     end
 
     return diverge, Vx, Vxx, k, K, dV
@@ -521,171 +549,61 @@ end
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) # quadratic timeinvariant cost, dynamics nonlinear time variant
 
-    m     = size(u,1)
-    n     = size(fx,1)
-    N     = Int(length(cx)/n)
+    @setupQTIC
 
-    cx    = reshape(cx,  (n, N))
-    cu    = reshape(cu,  (m, N-1))
-    cxx   = reshape(cxx, (n, n))
-    cxu   = reshape(cxu, (n, m))
-    cuu   = reshape(cuu, (m, m))
-
-    k     = zeros(m,N-1)
-    K     = zeros(m,n,N-1)
-    Vx    = zeros(n,N)
-    Vxx   = zeros(n,n,N)
-    dV    = [0, 0]
-
-    Vx[:,N]     = cx[:,N]
-    Vxx[:,:,N]  = cxx
-
-    diverge  = 0
     for i = N-1:-1:1
-        Qu  = cu[:,i]   + fu[:,:,i]'*Vx[:,i+1]
-        Qx  = cx[:,i]   + fx[:,:,i]'*Vx[:,i+1]
-        Qux = cxu' + fu[:,:,i]'*Vxx[:,:,i+1]*fx[:,:,i]
+        Qu  = cu[:,i]   + fu[:,:,i]'Vx[:,i+1]
+        Qx  = cx[:,i]   + fx[:,:,i]'Vx[:,i+1]
+        Qux = cxu' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         if !isempty(fxu)
             fxuVx = vectens(Vx[:,i+1],fxu[:,:,:,i])
             Qux   = Qux + fxuVx
         end
 
-        Quu = cuu + fu[:,:,i]'*Vxx[:,:,i+1]*fu[:,:,i]
+        Quu = cuu + fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
         if !isempty(fuu)
             fuuVx = vectens(Vx[:,i+1],fuu[:,:,:,i])
             Quu   = Quu + fuuVx
         end
 
-        Qxx = cxx  + fx[:,:,i]'*Vxx[:,:,i+1]*fx[:,:,i]
+        Qxx = cxx  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         if !isempty(fxx)
             Qxx = Qxx + vectens(Vx[:,i+1],fxx[:,:,:,i])
         end
 
         Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? lambda*eye(n) : 0)
 
-        Qux_reg = cxu'   + fu[:,:,i]'*Vxx_reg*fx[:,:,i]
+        Qux_reg = cxu'   + fu[:,:,i]'Vxx_reg*fx[:,:,i]
         if !isempty(fxu)
             Qux_reg = Qux_reg + fxuVx
         end
 
-        QuuF = cuu  + fu[:,:,i]'*Vxx_reg*fu[:,:,i] + (regType == 1 ? lambda*eye(m) : 0)
+        QuuF = cuu  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? lambda*eye(m) : 0)
 
         if !isempty(fuu)
             QuuF = QuuF + fuuVx
         end
 
-        if isempty(lims) || lims[1,1] > lims[1,2]
-            debug("#  no control limits: Cholesky decomposition, check for non-PD")
-            try
-                R = chol(QuuF)
-            catch
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-
-            debug("#  find control law")
-            kK = -R\(R'\[Qu Qux_reg])
-            k_i = kK[:,1]
-            K_i = kK[:,2:n+1]
-        else  debug("#  solve Quadratic Program")
-            lower = lims[:,1]-u[:,i]
-            upper = lims[:,2]-u[:,i]
-
-            k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
-            if result < 1
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-            K_i  = zeros(m,n)
-            if any(free)
-                Lfree         = -R\(R'\Qux_reg[free,:])
-                K_i[free,:]   = Lfree
-            end
-        end
-
-        debug("#  update cost-to-go approximation")
-        dV          = dV + [k_i'*Qu; .5*k_i'*Quu*k_i]
-        Vx[:,i]     = Qx  + K_i'*Quu*k_i + K_i'*Qu  + Qux'*k_i
-        Vxx[:,:,i]  = Qxx + K_i'*Quu*K_i + K_i'*Qux + Qux'*K_i
-        Vxx[:,:,i]  = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
-
-        debug("#  save controls/gains")
-        k[:,i]      = k_i
-        K[:,:,i]    = K_i
+        @end_backward_pass
     end
 
     return diverge, Vx, Vxx, k, K, dV
 end
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,lambda,regType,lims,u) # quadratic timeinvariant cost, linear time variant dynamics
-    m     = size(u,1)
-    n     = size(fx,1)
-    N     = Int(length(cx)/n)
+    @setupQTIC
 
-    cx    = reshape(cx,  (n, N))
-    cu    = reshape(cu,  (m, N-1))
-    cxx   = reshape(cxx, (n, n))
-    cxu   = reshape(cxu, (n, m))
-    cuu   = reshape(cuu, (m, m))
-
-    k     = zeros(m,N-1)
-    K     = zeros(m,n,N-1)
-    Vx    = zeros(n,N)
-    Vxx   = zeros(n,n,N)
-    dV    = [0, 0]
-
-    Vx[:,N]     = cx[:,N]
-    Vxx[:,:,N]  = cxx
-
-    diverge  = 0
     for i = N-1:-1:1
-        Qu  = cu[:,i]   + fu[:,:,i]'*Vx[:,i+1]
-        Qx  = cx[:,i]   + fx[:,:,i]'*Vx[:,i+1]
-        Qux = cxu' + fu[:,:,i]'*Vxx[:,:,i+1]*fx[:,:,i]
-        Quu = cuu + fu[:,:,i]'*Vxx[:,:,i+1]*fu[:,:,i]
-        Qxx = cxx  + fx[:,:,i]'*Vxx[:,:,i+1]*fx[:,:,i]
+        Qu  = cu[:,i]   + fu[:,:,i]'Vx[:,i+1]
+        Qx  = cx[:,i]   + fx[:,:,i]'Vx[:,i+1]
+        Qux = cxu' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
+        Quu = cuu + fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
+        Qxx = cxx  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? lambda*eye(n) : 0)
-        Qux_reg = cxu'   + fu[:,:,i]'*Vxx_reg*fx[:,:,i]
-        QuuF = cuu  + fu[:,:,i]'*Vxx_reg*fu[:,:,i] + (regType == 1 ? lambda*eye(m) : 0)
+        Qux_reg = cxu'   + fu[:,:,i]'Vxx_reg*fx[:,:,i]
+        QuuF = cuu  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? lambda*eye(m) : 0)
 
-        if isempty(lims) || lims[1,1] > lims[1,2]
-            debug("#  no control limits: Cholesky decomposition, check for non-PD")
-            try
-                R = chol(QuuF)
-            catch
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-
-            debug("#  find control law")
-            kK = -R\(R'\[Qu Qux_reg])
-            k_i = kK[:,1]
-            K_i = kK[:,2:n+1]
-        else  debug("#  solve Quadratic Program")
-            lower = lims[:,1]-u[:,i]
-            upper = lims[:,2]-u[:,i]
-
-            k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
-            if result < 1
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-            K_i  = zeros(m,n)
-            if any(free)
-                Lfree         = -R\(R'\Qux_reg[free,:])
-                K_i[free,:]   = Lfree
-            end
-        end
-
-        debug("#  update cost-to-go approximation")
-        dV          = dV + [k_i'*Qu; .5*k_i'*Quu*k_i]
-        Vx[:,i]     = Qx  + K_i'*Quu*k_i + K_i'*Qu  + Qux'*k_i
-        Vxx[:,:,i]  = Qxx + K_i'*Quu*K_i + K_i'*Qux + Qux'*K_i
-        Vxx[:,:,i]  = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
-
-        debug("#  save controls/gains")
-        k[:,i]      = k_i
-        K[:,:,i]    = K_i
+        @end_backward_pass
     end
 
     return diverge, Vx, Vxx, k, K, dV
@@ -693,11 +611,9 @@ end
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,lambda,regType,lims,u) # cost quadratic and cost and LTI dynamics
 
-    vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
-
     m  = size(u,1)
     n = size(fx,1)
-    N  = Int(length(cx)/n)
+    N  = length(cx) ÷ n
 
     cx    = reshape(cx,  (n, N))
     cu    = reshape(cu,  (m, N-1))
@@ -709,62 +625,25 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
     K     = zeros(m,n,N-1)
     Vx    = zeros(n,N)
     Vxx   = zeros(n,n,N)
-    dV    = [0, 0]
+    dV    = [0., 0.]
 
     Vx[:,N]     = cx[:,N]
     Vxx[:,:,N]  = cxx
 
     diverge  = 0
     for i = N-1:-1:1
-        Qu  = cu[:,i]      + fu'*Vx[:,i+1]
-        Qx  = cx[:,i]      + fx'*Vx[:,i+1]
-        Qux = cxu'  + fu'*Vxx[:,:,i+1]*fx
+        Qu  = cu[:,i]      + fu'Vx[:,i+1]
+        Qx  = cx[:,i]      + fx'Vx[:,i+1]
+        Qux = cxu'  + fu'Vxx[:,:,i+1]*fx
 
-        Quu = cuu   + fu'*Vxx[:,:,i+1]*fu
-        Qxx = cxx   + fx'*Vxx[:,:,i+1]*fx
+        Quu = cuu   + fu'Vxx[:,:,i+1]*fu
+        Qxx = cxx   + fx'Vxx[:,:,i+1]*fx
         Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? lambda*eye(n) : 0)
-        Qux_reg = cxu'   + fu'*Vxx_reg*fx
+        Qux_reg = cxu'   + fu'Vxx_reg*fx
 
-        QuuF = cuu  + fu'*Vxx_reg*fu + (regType == 1 ? lambda*eye(m) : 0)
+        QuuF = cuu  + fu'Vxx_reg*fu + (regType == 1 ? lambda*eye(m) : 0)
 
-        if isempty(lims) || lims[1,1] > lims[1,2]
-            debug("#  no control limits: Cholesky decomposition, check for non-PD")
-            try
-                R = chol(QuuF)
-            catch
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-
-            debug("#  find control law")
-            kK = -R\(R'\[Qu Qux_reg])
-            k_i = kK[:,1]
-            K_i = kK[:,2:n+1]
-        else  debug("#  solve Quadratic Program")
-            lower = lims[:,1]-u[:,i]
-            upper = lims[:,2]-u[:,i]
-
-            k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
-            if result < 1
-                diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
-            end
-            K_i  = zeros(m,n)
-            if any(free)
-                Lfree         = -R\(R'\Qux_reg[free,:])
-                K_i[free,:]   = Lfree
-            end
-        end
-
-        debug("#  update cost-to-go approximation")
-        dV          = dV + [k_i'*Qu; .5*k_i'*Quu*k_i]
-        Vx[:,i]     = Qx  + K_i'*Quu*k_i + K_i'*Qu  + Qux'*k_i
-        Vxx[:,:,i]  = Qxx + K_i'*Quu*K_i + K_i'*Qux + Qux'*K_i
-        Vxx[:,:,i]  = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
-
-        debug("#  save controls/gains")
-        k[:,i]      = k_i
-        K[:,:,i]    = K_i
+        @end_backward_pass
     end
 
     return diverge, Vx, Vxx, k, K, dV
