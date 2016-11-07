@@ -1,28 +1,28 @@
-using Control
+using ControlSystems
 export demo_pendcart
 
 plotstuff_pendcart(args...) = println("Install package Plots.jl to plot results in the end of demo_pendcart")
 
 @require Plots begin
 function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
-    cp = Plots.subplot(n=3,nr=1)
-    sp = Plots.subplot(x00',title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Simulation")
-    Plots.subplot!(cp,[u00' cost00[2:end]], title=["Control signal", "Cost"]', lab="Simulation")
+    cp = Plots.plot(layout=(1,3))
+    sp = Plots.plot(x00',title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Simulation", layout=(2,2))
+    Plots.plot!(cp,[u00' cost00[2:end]], title=["Control signal", "Cost"]', lab="Simulation", subplot=1)
 
-    Plots.subplot!(sp,x', title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Optimized", xlabel="Time step", legend=true)
-    Plots.plot!(cp[1,1],u', legend=true, title="Control signal",lab="Optimized")
-    Plots.plot!(cp[1,2],cost[2:end], legend=true, title="Cost",lab="Optimized", xlabel="Time step")
+    Plots.plot!(sp,x', title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Optimized", xlabel="Time step", legend=true)
+    Plots.plot!(cp,u', legend=true, title="Control signal",lab="Optimized", subplot=1)
+    Plots.plot!(cp,cost[2:end], legend=true, title="Cost",lab="Optimized", xlabel="Time step", subplot=2)
 
     totalcost = [ t.cost for t in otrace]
     iters = sum(totalcost .> 0)
     filter!(x->x>0,totalcost)
-    Plots.plot!(cp[1,3], totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false)
+    Plots.plot!(cp, totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
 end
 end
 
 
 """
-Run the iLQG function to find an optimal trajectory for the "pendulum on a cart system". Requires package Control.jl
+Run the iLQG function to find an optimal trajectory for the "pendulum on a cart system". Requires package ControlSystems.jl
 """
 function demo_pendcart()
 
