@@ -43,7 +43,7 @@ function demo_pendcart()
         xd[4] = u
     end
 
-    function dfsys(x,u, t)
+    function dfsys(x,u)
         [x[1]+h*x[2]; x[2]+h*(-g/l*sin(x[1])+u/l*cos(x[1])); x[3]+h*x[4]; x[4]+h*u]
     end
 
@@ -74,7 +74,7 @@ function demo_pendcart()
 
     function lin_dyn_f(x,u,i)
         u[isnan(u)] = 0
-        f = dfsys(x,u,i)
+        f = dfsys(x,u)
         c = cost_quadratic(x,u)
         return f,c
     end
@@ -84,17 +84,16 @@ function demo_pendcart()
     end
 
 
-    function lin_dyn_df(x,u,i::UnitRange)
+    function lin_dyn_df(x,u)
         u[isnan(u)] = 0
-        I = length(i)
         D = size(x,1)
-        nu = size(u,1)
+        nu,I = size(u)
         fx = Array{Float64}(D,D,I)
         fu = Array{Float64}(D,1,I)
         cx,cu,cxu = dcost_quadratic(x,u)
         cxx = Q
         cuu = [R]
-        for ii = i
+        for ii = 1:I
             fx[:,:,ii] = [0 1 0 0;
             -g/l*cos(x[1,ii])-u[ii]/l*sin(x[1,ii]) 0 0 0;
             0 0 0 1;
@@ -104,30 +103,6 @@ function demo_pendcart()
             fx[:,:,ii] = ABd[1:D,1:D]
             fu[:,:,ii] = ABd[1:D,D+1:D+nu]
         end
-        fxx=fxu=fuu = []
-        return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
-    end
-
-    function lin_dyn_df(x,u,i)
-        u[isnan(u)] = 0
-        D = size(x,1)
-        nu = size(u,1)
-        fx = Array{Float64}(D,D)
-        fu = Array{Float64}(D,1)
-        cx,cu,cxu = dcost_quadratic(x,u)
-        cxx = Q
-        cuu = R
-        fx = [0 1 0 0;
-        -g/l*cos(x[1])-u/l*sin(x[1]) 0 0 0;
-        0 0 0 1;
-        0 0 0 0]
-
-        fu = [0, cos(x[1])/l, 0, 1]
-
-        ABd = expm([fx*h  fu*h; zeros(nu, D + nu)])# ZoH sampling
-        fx = ABd[1:D,1:D]
-        fu = ABd[1:D,D+1:D+nu]
-
         fxx=fxu=fuu = []
         return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     end
@@ -148,40 +123,40 @@ function demo_pendcart()
             if !isempty(lims)
                 u[t]   = clamp(u[t],lims[1],lims[2])
             end
-            x[:,t] = dfsys(x[:,t-1],u[t],0)
+            x[:,t] = dfsys(x[:,t-1],u[t])
         end
-        dx     = copy(x[:,T])
-        dx[1] -= pi
-        uT   = -(L*dx)[1]
+        dx      = copy(x[:,T])
+        dx[1]  -= pi
+        uT      = -(L*dx)[1]
         if !isempty(lims)
             uT   = clamp(uT,lims[1],lims[2])
         end
-        x[:,T+1] = dfsys(x[:,T],uT,0)
+        x[:,T+1] = dfsys(x[:,T],uT)
         c = cost(x,u)
 
         return x, u, c
     end
 
 
-    T     = 600                     # Number of time steps
-    N     = T+1
-    g     = 9.82
-    l     = 0.35                    # Length of pendulum
-    h     = 0.01                    # Sample time
-    lims  = 5.0*[-1 1]              # control limits, e.g. ones(m,1)*[-1 1]*.6
-    goal  = [π,0,0,0]               # Reference point
-    A     = [0 1 0 0;               # Linearlized system dynamics matrix, continuous time
+    T    = 600 # Number of time steps
+    N    = T+1
+    g    = 9.82
+    l    = 0.35 # Length of pendulum
+    h    = 0.01 # Sample time
+    lims = 5.0*[-1 1] # control limits, e.g. ones(m,1)*[-1 1]*.6
+    goal = [π,0,0,0] # Reference point
+    A    = [0 1 0 0; # Linearlized system dynamics matrix, continuous time
     g/l 0 0 0;
     0 0 0 1;
     0 0 0 0]
-    B     = [0, -1/l, 0, 1]
-    C     = eye(4)                  # Assume all states are measurable
-    D     = 4
+    B   = [0, -1/l, 0, 1]
+    C   = eye(4) # Assume all states are measurable
+    D   = 4
 
-    sys   = ss(A,B,C,zeros(4))
-    Q     = h*diagm([10,1,2,1])     # State weight matrix
-    R     = h*1                     # Control weight matrix
-    L     = lqr(sys,Q,R)            # Calculate the optimal state feedback
+    sys = ss(A,B,C,zeros(4))
+    Q   = h*diagm([10,1,2,1]) # State weight matrix
+    R   = h*1 # Control weight matrix
+    L   = lqr(sys,Q,R) # Calculate the optimal state feedback
 
     x0 = [π-0.6,0,0,0]
 
@@ -196,9 +171,9 @@ function demo_pendcart()
     cxu = zeros(size(B))
     cuu = R
 
-    f(x,u,i)   = lin_dyn_f(x,u,i)
-    fT(x)      = lin_dyn_fT(x)
-    df(x,u,i)  = lin_dyn_df(x,u,i)
+    f(x,u,i) = lin_dyn_f(x,u,i)
+    fT(x)    = lin_dyn_fT(x)
+    df(x,u)  = lin_dyn_df(x,u)
     # plotFn(x)  = plot(squeeze(x,2)')
 
     # run the optimization

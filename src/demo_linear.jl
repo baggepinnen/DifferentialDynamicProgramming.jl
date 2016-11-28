@@ -64,7 +64,7 @@ function demo_linear(;kwargs...)
 
     f(x,u,i)   = lin_dyn_f(x,u,A,B,Q,R)
     fT(x)      = lin_dyn_fT(x,Q)
-    df(x,u,i)  = lin_dyn_df(x,u,Q,R)
+    df(x,u)  = lin_dyn_df(x,u,Q,R)
     # plotFn(x)  = plot(squeeze(x,2)')
 
     # run the optimization
