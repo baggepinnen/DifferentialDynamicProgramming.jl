@@ -7,9 +7,10 @@ distributions.
 Σ_new: n×n×T , variance of new trajectory distribution.
 """
 function kl_div(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDist)
+    (isempty(new_traj) || isempty(prev_traj)) && (return 0)
     μ_new = [xnew; unew]
     T     = new_traj.T
-    m     = size(new_traj.K,1)
+    # m     = size(new_traj.fu,1)
     kldiv = zeros(T)
     for t = 1:T
         μt    = μ_new[:,t]
@@ -65,6 +66,7 @@ The Q terms calculated in the backwards pass should be added to these terms to p
 This function should be called from within the backwards_pass function.
 """
 function dkl(traj_new)
+    isempty(traj_new) && (return (0,0,0,0,0))
     m,n,T  = traj_new.m,traj_new.n,traj_new.T
     cx,cu,cxx,cuu,cxu = zeros(n,T),zeros(m,T),zeros(n,n,T),zeros(m,m,T),zeros(n,m,T)
     for t in 1:T
