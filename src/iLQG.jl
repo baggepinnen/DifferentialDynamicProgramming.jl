@@ -177,7 +177,7 @@ function iLQG(f,fT,df, x0, u0;
             debug("# test different backtracing parameters alpha and break loop when first succeeds")
             x,un,cost,_ = forward_pass(traj_new,x0[:,1],alpha*u,[],1,f,fT, lims,diff_fun)
             debug("# simplistic divergence test")
-            if all(abs(x[:]) .< 1e8)
+            if all(abs.(vec(x)) .< 1e8)
                 u = un
                 diverge = false
                 break
@@ -278,6 +278,7 @@ function iLQG(f,fT,df, x0, u0;
             tic()
             debug("#  serial backtracking line-search")
             for alpha = alpha
+                # TODO: the error is that u+l*alpha is not entered as before, have to get it from traj_new?
                 xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alpha,f,fT, lims, diff_fun)
                 dcost    = sum(cost) - sum(costnew)
                 expected = -alpha*(dV[1] + alpha*dV[2])
@@ -383,10 +384,11 @@ function iLQG(f,fT,df, x0, u0;
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
 
-# TODO: traj_new ska innehålla du, som tidigare var förändringen att applicera till u
+# TODO: traj_new ska innehålla du på plats traj_new.μu, som tidigare var förändringen att applicera till u
 function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
-    n,m,N     = traj_new.n,traj_new.m,traj_new.T
-    xnew      = zeros(n,N)
+    n         = size(x0,1)
+    m,N       = size(u)
+    xnew      = Array(eltype(x0),n,N)
     xnew[:,1] = x0
     unew      = copy(u)
     cnew      = zeros(N)
@@ -408,7 +410,7 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
         end
     end
     # cnew[N+1] = fT(xnew[:,N+1])
-    sigmanew = zeros(m+n,m+n,T) # TODO: this function should calculate the covariance matrix as well
+    sigmanew = zeros(m+n,m+n,N) # TODO: this function should calculate the covariance matrix as well
     return xnew,unew,cnew,sigmanew
 end
 
@@ -432,6 +434,7 @@ macro setupQTIC()
 
         Vx[:,N]    = cx[:,N]
         Vxx[:,:,N] = cxx
+        Quu        = Array(T,m,m,N)
         diverge    = 0
     end |> esc
 end
@@ -494,7 +497,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Vx  = zeros(n,N)
     Vxx = zeros(n,n,N)
     dV  = [0., 0.]
-
+    Quu = Array(T,m,m,N)
     Vx[:,N]     = cx[:,N]
     Vxx[:,:,N]  = cxx[:,:,N]
 
@@ -525,7 +528,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,u), Vx, Vxx,dV
+    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
 end
 
 # GaussianDist
@@ -583,12 +586,11 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,u), Vx, Vxx,dV
+    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
 end
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeinvariant cost, linear time variant dynamics
     @setupQTIC
-    Quu = Array(T,m,m,N)
     for i = N-1:-1:1
         Qu         = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
         Qx         = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
@@ -602,7 +604,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,u), Vx, Vxx,dV
+    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
 end
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u) # cost quadratic and cost and LTI dynamics
@@ -618,6 +620,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
     K   = zeros(m,n,N)
     Vx  = zeros(n,N)
     Vxx = zeros(n,n,N)
+    Quu = Array(T,m,m,N)
     dV  = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
@@ -637,7 +640,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,u), Vx, Vxx,dV
+    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
 end
 
 
@@ -653,11 +656,12 @@ end
 
 
 """
+new_η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
  This Function caluculates the step size
 """
 function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
-    kl_step > 0 || (return (1., false,0))
-    break_ = false
+    kl_step > 0 || (return (1., true,0))
+    satisfied = false
     min_η  = 1e-5 # TODO: these should be hyperparameters
     max_η  = 1e16 # TODO: these should be hyperparameters
     div    = kl_div(xnew,unew,sigmanew, traj_new, traj_prev)
@@ -665,7 +669,7 @@ function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
     # Convergence check - constraint satisfaction.
     if (abs(con) < 0.1*kl_step) # allow some small constrain violation
         debug(@sprintf("KL: %12.7f / %12.7f, converged",  div, kl_step))
-        break_ = true
+        satisfied = true
     end
     if con < 0 # η was too big.
         max_η = η
@@ -678,7 +682,7 @@ function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
         new_η = min(geom, 10.0*min_η)
         debug(@sprintf("KL: %12.7f / %12.7f, η too small, new η: %12.7f",  div, kl_step, new_η))
     end
-    return new_η, break_,div
+    return new_η, satisfied, div
 
 
 end

@@ -11,7 +11,7 @@ The following demo functions are provided
 
 `demoQP` To solve a demo quadratic program
 
-If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
+If [ControlSystems.jl](https://github.com/JuliaControl/ControlSystems.jl) is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
 
 ## Usage
 ### Demo linear
@@ -19,32 +19,32 @@ See demo file `demo_linear.jl` for a usage example.
 
 ```julia
 # make stable linear dynamics
-h = .01         # time step
-n = 10          # state dimension
-m = 2           # control dimension
-A = randn(n,n)
-A = A-A'        # skew-symmetric = pure imaginary eigenvalues
-A = expm(h*A)   # discrete time
-B = h*randn(n,m)
+h    = .01  # time step
+n    = 10   # state dimension
+m    = 2    # control dimension
+A    = randn(n,n)
+A    = A-A' # skew-symmetric = pure imaginary eigenvalues
+A    = expm(h*A)        # discrete time
+B    = h*randn(n,m)
 
 # quadratic costs
-Q = h*eye(n)
-R = .1*h*eye(m)
+Q    = h*eye(n)
+R    = .1*h*eye(m)
 
 # control limits
 lims = [] #ones(m,1)*[-1 1]*.6
 
-T        = 1000              # horizon
-x0       = ones(n,1)         # initial state
-u0       = .1*randn(m,T)     # initial controls
+T    = 1000             # horizon
+x0   = ones(n,1)        # initial state
+u0   = .1*randn(m,T)    # initial controls
 
 # optimization problem
-N   = T+1
-fx  = A
-fu  = B
-cxx = Q
-cxu = zeros(size(B))
-cuu = R
+N    = T+1
+fx   = A
+fu   = B
+cxx  = Q
+cxu  = zeros(size(B))
+cuu  = R
 
 # Specify dynamics functions
 function lin_dyn_df(x,u,Q,R)
@@ -56,9 +56,9 @@ function lin_dyn_df(x,u,Q,R)
 end
 function lin_dyn_f(x,u,A,B,Q,R)
     u[isnan(u)] = 0
-    f = A*x + B*u
+    xnew = A*x + B*u
     c = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
-    return f,c
+    return xnew,c
 end
 
 function lin_dyn_fT(x,Q)
@@ -68,17 +68,18 @@ end
 
 f(x,u,i)   = lin_dyn_f(x,u,A,B,Q,R)
 fT(x)      = lin_dyn_fT(x,Q)
-df(x,u,i)  = lin_dyn_df(x,u,Q,R)
+df(x,u)  = lin_dyn_df(x,u,Q,R)
 # plotFn(x)  = plot(squeeze(x,2)')
 
 # run the optimization
-@time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0, lims=lims, plotFn= x -> 0 );
+
+@time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0, lims=lims);
 ```
 
 
 
 ### Demo pendulum on cart
-If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated. In this example, regular LQG control fails in stabilizing the pendulum at the upright position due to control limitations. The DDP-based optimization solves this by letting the pendulum fall, and increases the energy in the pendulum during the fall such that it will stay upright after one revolution.
+If [ControlSystems.jl](https://github.com/JuliaControl/ControlSystems.jl) is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated. In this example, regular LQG control fails in stabilizing the pendulum at the upright position due to control limitations. The DDP-based optimization solves this by letting the pendulum fall, and increases the energy in the pendulum during the fall such that it will stay upright after one revolution.
 
 ![window](images/states_pendcart.png)
 ![window](images/control_pendcart.png)

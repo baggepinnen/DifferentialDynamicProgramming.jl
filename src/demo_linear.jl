@@ -52,9 +52,9 @@ function demo_linear(;kwargs...)
     end
     function lin_dyn_f(x,u,A,B,Q,R)
         u[isnan(u)] = 0
-        f = A*x + B*u
+        xnew = A*x + B*u
         c = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
-        return f,c
+        return xnew,c
     end
 
     function lin_dyn_fT(x,Q)
@@ -68,7 +68,7 @@ function demo_linear(;kwargs...)
     # plotFn(x)  = plot(squeeze(x,2)')
 
     # run the optimization
-    @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0; lims=lims, plotFn= x -> 0 ,kwargs...);
+    @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0; lims=lims,kwargs...);
 
     totalcost = [ t.cost for t in otrace]
     iters = sum(totalcost .> 0)
