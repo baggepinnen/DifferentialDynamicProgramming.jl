@@ -14,7 +14,7 @@ costs = map(1:10) do MCiteration
     R    = .1*h*eye(m)
 
     # control limits
-    lims = [] #ones(m,1)*[-1 1]*.6
+    lims = []# ones(m,1)*[-1 1]*.6
 
     T    = 1000             # horizon
     x0   = ones(n,1)        # initial state

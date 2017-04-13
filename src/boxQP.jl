@@ -86,14 +86,14 @@ function boxQP(H,g,lower,upper,x0;
         grad     = g + H*x
 
         debug("# find clamped dimensions")
-        old_clamped                        = clamped
-        clamped                            = falses(n)
+        old_clamped = clamped
+        clamped     = falses(n)
         #         clamped[(x[:,1] .== lower)&(grad[:,1].>0)]   = true
         #         clamped[(x[:,1] .== upper)&(grad[:,1].<0)]   = true
         for i = 1:n
             clamped[i]   = ((x[i,1] == lower[i])&&(grad[i,1]>0)) || ((x[i,1] == upper[i])&&(grad[i,1]<0))
         end
-        free                               = !clamped
+        free = !clamped
 
         debug("# check for all clamped")
         if all(clamped)
@@ -103,13 +103,13 @@ function boxQP(H,g,lower,upper,x0;
 
         debug("# factorize if clamped has changed")
         if iter == 1
-            factorize    = true
+            factorize = true
         else
-            factorize    = any(old_clamped != clamped)
+            factorize = any(old_clamped != clamped)
         end
 
         if factorize
-            Hfree  = chol(H[free,free])  # was   (Hfree, indef)  = chol(H[free,free])
+            Hfree  = chol(Hermitian(H[free,free]))  # was   (Hfree, indef)  = chol(H[free,free])
             #             if indef
             #                 result = -1
             #                 break

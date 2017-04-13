@@ -183,10 +183,10 @@ function demo_pendcart()
     lims=lims,
     # plotFn= x -> Plots.subplot!(x'),
     regType=2,
-    Alpha= logspace(0.2,-3,6),
+    alpha= logspace(0.2,-3,6),
     verbosity=3,
-    tolFun = 1e-7,
-    maxIter=1000);
+    tol_fun = 1e-7,
+    max_iter=1000);
 
     plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
     println("Done")

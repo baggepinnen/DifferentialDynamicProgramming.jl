@@ -157,9 +157,9 @@ function iLQG(f,fT,df, x0, u0;
     m   = size(u0, 1)          # dimension of control vector
     N   = size(u0, 2)          # number of state transitions
     u   = u0                   # initial control sequence
-    η   = 0.
+    η   = 1.                   # TODO: this init value has not been confirmed
     traj_new  = GaussianDist(Float64)
-    traj_prev = GaussianDist(Float64)
+    # traj_prev = GaussianDist(Float64)
 
     # --- initialize trace data structure
     trace = [Trace() for i in 1:min( max_iter+1,1e6)]
@@ -173,9 +173,9 @@ function iLQG(f,fT,df, x0, u0;
     debug("Setting up initial trajectory")
     if size(x0,2) == 1 # only initial state provided
         diverge = true
-        for alpha =  alpha
+        for alphai =  alpha
             debug("# test different backtracing parameters alpha and break loop when first succeeds")
-            x,un,cost,_ = forward_pass(traj_new,x0[:,1],alpha*u,[],1,f,fT, lims,diff_fun)
+            x,un,cost,_ = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,fT, lims,diff_fun)
             debug("# simplistic divergence test")
             if all(abs.(vec(x)) .< 1e8)
                 u = un
@@ -239,17 +239,19 @@ function iLQG(f,fT,df, x0, u0;
         while !back_pass_done
             tic()
             if kl_step > 0
-                cxkl,cukl,cxxkl,cuukl,cxukl = dkl(traj_new) # TODO: this may need both traj_new and traj_prev
                 @show η
-                @show cxkl,cukl,cxxkl,cuukl,cxukl
-                @show traj_new
-                cx,cu,cxx,cuu,cxu = cx/η+cxkl, cu/η+cukl, cxx/η+cxxkl, cuu/η+cuukl, cxu/η+cxukl
+                cxkl,cukl,cxxkl,cuukl,cxukl = dkl(traj_new) # TODO: this may need both traj_new and traj_prev
+                # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
+                # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
+                cx,cu,cxx,cuu,cxu = cx./η.+cxkl, cu./η.+cukl, cxx./η.+cxxkl, cuu./η.+cuukl, cxu./η.+cxukl # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, this works but can be sped up significantly
             end
             diverge, traj_new,Vx, Vxx,dV = if linearsys
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,λ, regType, lims,x,u)
             else
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
             end
+            @show typeof(traj_new)
+
             trace[iter].time_backward = toq()
 
             if diverge > 0
@@ -277,11 +279,11 @@ function iLQG(f,fT,df, x0, u0;
         if back_pass_done
             tic()
             debug("#  serial backtracking line-search")
-            for alpha = alpha
-                # TODO: the error is that u+l*alpha is not entered as before, have to get it from traj_new?
-                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alpha,f,fT, lims, diff_fun)
+            for alphai = alpha
+                # TODO: the error is that u+l*alphai is not entered as before, have to get it from traj_new?
+                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
                 dcost    = sum(cost) - sum(costnew)
-                expected = -alpha*(dV[1] + alpha*dV[2])
+                expected = -alphai*(dV[1] + alphai*dV[2])
                 reduce_ratio = if expected > 0
                     dcost/expected
                 else
@@ -290,15 +292,17 @@ function iLQG(f,fT,df, x0, u0;
                 end
                 if reduce_ratio > reduce_ratio_min
                     fwd_pass_done = true
+                    @show size(xnew),size(unew),size(sigmanew)
+                    # TODO: detta steget ska nog göras vid ett annat tillfälle
+                    η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
                     break
                 end
             end
-            alpha = fwd_pass_done ? alpha : NaN
+            alphai = fwd_pass_done ? alphai : NaN
             trace[iter].time_forward = toq()
         end
 
         # ====== STEP 4: accept step (or not), print status
-        η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
 
         #  print headings
         if verbosity > 1 && last_head == print_head
@@ -341,7 +345,7 @@ function iLQG(f,fT,df, x0, u0;
         #  update trace
         trace[iter].λ           = λ
         trace[iter].dλ          = dλ
-        trace[iter].alpha       = alpha
+        trace[iter].alpha       = alphai
         trace[iter].improvement = dcost
         trace[iter].cost        = sum(cost)
         trace[iter].reduce_ratio = reduce_ratio
@@ -384,7 +388,7 @@ function iLQG(f,fT,df, x0, u0;
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
 
-# TODO: traj_new ska innehålla du på plats traj_new.μu, som tidigare var förändringen att applicera till u
+
 function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
     n         = size(x0,1)
     m,N       = size(u)
@@ -402,7 +406,7 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
             unew[:,i] .+= traj_new.fx[:,:,i]*dx
         end
         if !isempty(lims)
-            unew[:,i] = min(lims[:,2], max(lims[:,1], unew[:,i]))
+            unew[:,i] = clamp.(unew[:,i],lims[:,1], lims[:,2])
         end
         xnewi, cnew[i]  = f(xnew[:,i], unew[:,i], i)
         if i < N
@@ -447,7 +451,7 @@ macro end_backward_pass()
                 R = chol(Hermitian(QuuF))
             catch
                 diverge  = i
-                return diverge, GaussianDist(N,n,m,K,[],Quu,x,u), Vx, Vxx
+                return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx, dV
             end
 
             debug("#  find control law")
@@ -458,11 +462,15 @@ macro end_backward_pass()
             debug("#  solve Quadratic Program")
             lower = lims[:,1]-u[:,i]
             upper = lims[:,2]-u[:,i]
-
-            k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
+            result = 1
+            try
+                k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
+            catch
+                result = 0
+            end
             if result < 1
                 diverge  = i
-                return diverge, Vx, Vxx, k, K, dV
+                return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx, dV
             end
             K_i  = zeros(m,n)
             if any(free)
@@ -607,6 +615,43 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
 end
 
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeVariant cost, linear time variant dynamics
+    m   = size(u,1)
+    n,N = size(fx,1,3)
+
+    cx  = reshape(cx, (n, N))
+    cu  = reshape(cu, (m, N))
+    cxx = reshape(cxx, (n, n, N))
+    cxu = reshape(cxu, (n, m, N))
+    cuu = reshape(cuu, (m, m, N))
+
+    k   = zeros(m,N)
+    K   = zeros(m,n,N)
+    Vx  = zeros(n,N)
+    Vxx = zeros(n,n,N)
+    dV  = [0., 0.] # TODO: WTF is dV?
+
+    Vx[:,N]    = cx[:,N]
+    Vxx[:,:,N] = cxx[:,:,end]
+    Quu        = Array(T,m,m,N)
+    diverge    = 0
+
+    for i = N-1:-1:1
+        Qu          = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
+        Qx          = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
+        Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
+        Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
+        Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
+        Vxx_reg     = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
+        Qux_reg     = cxu[:,:,i]' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
+        QuuF        = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
+
+        @end_backward_pass
+    end
+
+    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
+end
+
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u) # cost quadratic and cost and LTI dynamics
 
     m,N = size(u)
@@ -657,14 +702,14 @@ end
 
 """
 new_η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
- This Function caluculates the step size
+This Function caluculates the step size
 """
 function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
     kl_step > 0 || (return (1., true,0))
     satisfied = false
     min_η  = 1e-5 # TODO: these should be hyperparameters
     max_η  = 1e16 # TODO: these should be hyperparameters
-    div    = kl_div(xnew,unew,sigmanew, traj_new, traj_prev)
+    div    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev) # TODO: I changed to wiki version
     con    = div - kl_step
     # Convergence check - constraint satisfaction.
     if (abs(con) < 0.1*kl_step) # allow some small constrain violation
