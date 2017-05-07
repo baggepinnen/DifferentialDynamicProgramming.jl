@@ -1,3 +1,4 @@
+vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
 macro setupQTIC()
     quote
@@ -255,39 +256,8 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
 end
 
 
-vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
+
 
 function graphics(x...)
     return 0
-end
-
-using Juno
-"""
-new_η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
-This Function caluculates the step size
-"""
-function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
-    kl_step > 0 || (return (1., true,0))
-
-    min_η  = 1e-5 # TODO: these should be hyperparameters
-    max_η  = 1e16 # TODO: these should be hyperparameters
-    div    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev) # TODO: I changed to wiki version
-    con    = div - kl_step
-    # Convergence check - constraint satisfaction.
-    satisfied = abs(con) < 0.1*kl_step # allow some small constraint violation
-    if satisfied
-        debug(@sprintf("KL: %12.7f / %12.7f, converged",  div, kl_step))
-    end
-    if con < 0 # η was too big.
-        max_η = η
-        geom = √(min_η*max_η)  # Geometric mean.
-        new_η = max(geom, 0.1*max_η)
-        debug(@sprintf("KL: %12.7f / %12.7f, η too big, new η: %12.7f",  div, kl_step, new_η))
-    else # η was too small.
-        min_η = η
-        geom = √(min_η*max_η)  # Geometric mean.
-        new_η = min(geom, 10.0*min_η)
-        debug(@sprintf("KL: %12.7f / %12.7f, η too small, new η: %12.7f",  div, kl_step, new_η))
-    end
-    return new_η, satisfied, div
 end

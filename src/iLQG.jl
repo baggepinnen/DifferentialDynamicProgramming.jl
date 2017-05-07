@@ -30,6 +30,7 @@ type GaussianDist{P}
 end
 
 GaussianDist(P) = GaussianDist(0,0,0,emptyMat3(P),emptyMat3(P),emptyMat3(P),emptyMat2(P),emptyMat2(P))
+GaussianDist(P,T,n,m) = GaussianDist(T,n,m,zeros(P,n,n,T),zeros(P,n,m,T),cat(3,[eye(P,n+m) for t=1:T]...),zeros(P,n,T),zeros(P,m,T))
 Base.isempty(gd::GaussianDist) = gd.T == gd.n == gd.m == 0
 type GaussianTrajDist{P}
     policy::GaussianDist{P}
@@ -98,7 +99,7 @@ the cost-to-go is V = fliplr(cumsum(fliplr(cost)))
 
 `trace` - a trace of various convergence-related values. One row for each
 iteration, the columns of trace are
-`[iter λ alpha g_norm dcost z sum(cost) dλ]`
+`[iter λ alpha g_norm Δcost z sum(cost) dλ]`
 see below for details.
 
 `timing` - timing information
@@ -163,28 +164,24 @@ function iLQG(f,fT,df, x0, u0;
 
     # --- initialize trace data structure
     trace = [Trace() for i in 1:min( max_iter+1,1e6)]
-    trace[1].iter = 1
-    trace[1].λ = λ
-    trace[1].dλ = dλ
-
-
+    trace[1].iter,trace[1].λ,trace[1].dλ = 1,λ,dλ
 
     # --- initial trajectory
     debug("Setting up initial trajectory")
     if size(x0,2) == 1 # only initial state provided
         diverge = true
-        for alphai =  alpha
+        for alphai ∈ alpha
             debug("# test different backtracing parameters alpha and break loop when first succeeds")
             x,un,cost,_ = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,fT, lims,diff_fun)
             debug("# simplistic divergence test")
-            if all(abs.(vec(x)) .< 1e8)
+            if all(abs.(x) .< 1e8)
                 u = un
                 diverge = false
                 break
             end
         end
     elseif size(x0,2) == N
-        debug("# pre-rolled initial forward pass, initial traj provided, e.g. from demonstration")
+        debug("# pre-rolled initial forward pass, initial traj provided")
         x        = x0
         diverge  = false
         isempty(cost) && error("Initial trajectory supplied, initial cost must also be supplied")
@@ -207,15 +204,16 @@ function iLQG(f,fT,df, x0, u0;
     end
 
     # constants, timers, counters
-    flg_change = true
-    dcost      = 0.
-    expected   = 0.
-    div        = 0.
-    print_head = 10 # print headings every print_head lines
-    last_head  = print_head
-    g_norm     = Vector{Float64}()
-    t_start    = time()
+    flg_change         = true
+    Δcost              = 0.
+    expected_reduction = 0.
+    div                = 0.
+    print_head         = 10 # print headings every print_head lines
+    last_head          = print_head
+    g_norm             = Vector{Float64}()
+    t_start            = time()
     verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")
+    satisfied          = true
 
     iter = accepted_iter = 1
     while accepted_iter <= max_iter
@@ -227,9 +225,7 @@ function iLQG(f,fT,df, x0, u0;
         traj_prev        = traj_new
         # ====== STEP 1: differentiate dynamics and cost along new trajectory
         if flg_change
-            tic()
-            fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
-            trace[iter].time_derivs = toq()
+            trace[iter].time_derivs = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
             flg_change   = false
         end
         # Determine what kind of system we are dealing with
@@ -250,21 +246,19 @@ function iLQG(f,fT,df, x0, u0;
             else
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
             end
-            @show typeof(traj_new)
 
             trace[iter].time_backward = toq()
 
             if diverge > 0
                 verbosity > 2 && @printf("Cholesky failed at timestep %d.\n",diverge)
-                dλ = max(dλ*λfactor, λfactor)
-                λ  = max(λ*dλ, λmin)
+                dλ,λ = max(dλ*λfactor, λfactor), max(λ*dλ, λmin)
                 if λ >  λmax; break; end
                 continue
             end
             back_pass_done = true
         end
 
-        k, K = traj_new.μu, traj_new.fx
+        k, K = traj_new.μu, traj_new.fx # TODO: μu or fu ? this need to be cleared out
         #  check for termination due to small gradient
         g_norm = mean(maximum(abs.(k) ./ (abs.(u)+1),1))
         trace[iter].grad_norm = g_norm
@@ -281,19 +275,18 @@ function iLQG(f,fT,df, x0, u0;
             debug("#  serial backtracking line-search")
             for alphai = alpha
                 # TODO: the error is that u+l*alphai is not entered as before, have to get it from traj_new?
+                # TODO: do we put xnew unew etc into traj_new?
                 xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
-                dcost    = sum(cost) - sum(costnew)
-                expected = -alphai*(dV[1] + alphai*dV[2])
-                reduce_ratio = if expected > 0
-                    dcost/expected
+                Δcost    = sum(cost) - sum(costnew)
+                expected_reduction = -alphai*(dV[1] + alphai*dV[2])
+                reduce_ratio = if expected_reduction > 0
+                    Δcost/expected_reduction
                 else
                     warn("negative expected reduction: should not occur")
-                    sign(dcost)
+                    sign(Δcost)
                 end
                 if reduce_ratio > reduce_ratio_min
                     fwd_pass_done = true
-                    @show size(xnew),size(unew),size(sigmanew)
-                    # TODO: detta steget ska nog göras vid ett annat tillfälle
                     η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
                     break
                 end
@@ -313,27 +306,26 @@ function iLQG(f,fT,df, x0, u0;
         if fwd_pass_done
             if verbosity > 1
                 @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f\n",
-                iter, sum(cost), dcost, expected, g_norm, log10(λ))
+                iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ))
                 last_head += 1
             end
             dλ = min(dλ / λfactor, 1/ λfactor)
             λ *= dλ
 
             #  accept changes
-            x,u,cost  = xnew,unew,costnew
+            x,u,cost  = xnew,unew,costnew # TODO: update traj_old
             flg_change = true
             plot_fun(x)
-            if dcost < tol_fun && satisfied#  terminate ?
+            if Δcost < tol_fun && satisfied#  terminate ?
                 verbosity > 0 &&  @printf("\nSUCCESS: cost change < tol_fun\n")
                 break
             end
             accepted_iter += 1
         else #  no cost improvement
-            dλ  = max(dλ * λfactor,  λfactor)#  increase λ
-            λ   = max(λ * dλ,  λmin)
+            dλ,λ  = max(dλ * λfactor,  λfactor), max(λ * dλ,  λmin)#  increase λ
             if verbosity > 1
                 @printf("%-12d%-12s%-12.3g%-12.3g%-12.3g%-12.1f\n",
-                iter,"NO STEP", dcost, expected, g_norm, log10(λ))
+                iter,"NO STEP", Δcost, expected_reduction, g_norm, log10(λ))
                 last_head = last_head+1
             end
             if λ > λmax #  terminate ?
@@ -343,47 +335,22 @@ function iLQG(f,fT,df, x0, u0;
             push!(trace, Trace())
         end
         #  update trace
-        trace[iter].λ           = λ
-        trace[iter].dλ          = dλ
-        trace[iter].alpha       = alphai
-        trace[iter].improvement = dcost
-        trace[iter].cost        = sum(cost)
+        trace[iter].λ            = λ
+        trace[iter].dλ           = dλ
+        trace[iter].alpha        = alphai
+        trace[iter].improvement  = Δcost
+        trace[iter].cost         = sum(cost)
         trace[iter].reduce_ratio = reduce_ratio
         graphics( plot,x,u,cost,K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
         iter += 1
     end
 
-    # save λ/dλ
-    trace[iter].λ  = λ
-    trace[iter].dλ = dλ
-
     iter ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
-
     iter == 1 && error("Failure: no iterations completed, something is wrong. Try enabling the debug flag in DifferentialDynamicProgramming.jl for verbose printing.")
 
 
     div > kl_step && abs(div - kl_step) > 0.1*kl_step && warn("KL divergence too high when done")
-
-    diff_t  = [trace[i].time_derivs for i in 1:iter]
-    diff_t  = sum(diff_t[!isnan(diff_t)])
-    back_t  = [trace[i].time_backward for i in 1:iter]
-    back_t  = sum(back_t[!isnan(back_t)])
-    fwd_t   = [trace[i].time_forward for i in 1:iter]
-    fwd_t   = sum(fwd_t[!isnan(fwd_t)])
-    total_t = time()-t_start
-    if verbosity > 0
-        info = 100/total_t*[diff_t, back_t, fwd_t, (total_t-diff_t-back_t-fwd_t)]
-        @printf("\n iterations:   %-3d\n
-        final cost:   %-12.7g\n
-        final grad:   %-12.7g\n
-        final λ: %-12.7e\n
-        time / iter:  %-5.0f ms\n
-        total time:   %-5.2f seconds, of which\n
-        derivs:     %-4.1f%%\n
-        back pass:  %-4.1f%%\n
-        fwd pass:   %-4.1f%%\n
-        other:      %-4.1f%% (graphics etc.)\n =========== end iLQG ===========\n",iter,sum(cost[:]),g_norm,λ,1e3*total_t/iter,total_t,info[1],info[2],info[3],info[4])
-    end
+    verbosity > 0 && print_timing(trace,iter,t_start,cost)
 
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
@@ -416,4 +383,25 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
     # cnew[N+1] = fT(xnew[:,N+1])
     sigmanew = zeros(m+n,m+n,N) # TODO: this function should calculate the covariance matrix as well
     return xnew,unew,cnew,sigmanew
+end
+
+function print_timing(trace,iter,t_start,cost)
+    diff_t  = [trace[i].time_derivs for i in 1:iter]
+    diff_t  = sum(diff_t[!isnan(diff_t)])
+    back_t  = [trace[i].time_backward for i in 1:iter]
+    back_t  = sum(back_t[!isnan(back_t)])
+    fwd_t   = [trace[i].time_forward for i in 1:iter]
+    fwd_t   = sum(fwd_t[!isnan(fwd_t)])
+    total_t = time()-t_start
+    info = 100/total_t*[diff_t, back_t, fwd_t, (total_t-diff_t-back_t-fwd_t)]
+    @printf("\n iterations:   %-3d\n
+    final cost:   %-12.7g\n
+    final grad:   %-12.7g\n
+    final λ: %-12.7e\n
+    time / iter:  %-5.0f ms\n
+    total time:   %-5.2f seconds, of which\n
+    derivs:     %-4.1f%%\n
+    back pass:  %-4.1f%%\n
+    fwd pass:   %-4.1f%%\n
+    other:      %-4.1f%% (graphics etc.)\n =========== end iLQG ===========\n",iter,sum(cost),g_norm,λ,1e3*total_t/iter,total_t,info[1],info[2],info[3],info[4])
 end
