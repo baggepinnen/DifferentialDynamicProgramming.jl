@@ -9,6 +9,7 @@ export AbstractModel, AbstractCost, ModelAndCost, define_modelcost_functions, co
 include("interfaces.jl")
 include("boxQP.jl")
 include("iLQG.jl")
+include("backward_pass.jl")
 include("demo_linear.jl")
 @require ControlSystems include("system_pendcart.jl")
 
