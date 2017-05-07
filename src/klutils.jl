@@ -34,7 +34,7 @@ function kl_div(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDi
     return sum(kldiv)
 end
 
-
+# TODO: jag höll på att fundera på hur KL-contraintet skall hanteras. Räknas det ut på rätt ställe och på rätt sätt?
 function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDist)
     μ_new = [xnew; unew]
     T,m     = new_traj.T, new_traj.m
