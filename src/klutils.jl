@@ -98,8 +98,8 @@ function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::Gauss
 end
 
 
-sum(diag(K_diff'inv_prev'K_diff'sigma)) +
-2 * k_diff'inv_prev'K_diff'mu
+# sum(diag(K_diff'inv_prev'K_diff'sigma)) +
+# 2 * k_diff'inv_prev'K_diff'mu
 # TODO: Calculate Σ in the forwards pass, requires covariance of forward dynamics model. Is this is given by the Pkn matrix from the Kalman model?
 
 
@@ -112,7 +112,7 @@ function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
 
     min_η  = 1e-5 # TODO: these should be hyperparameters
     max_η  = 1e16 # TODO: these should be hyperparameters
-    divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev) 
+    divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev)
     constrain_violation    = divergence - kl_step
     # Convergence check - constraint satisfaction.
     satisfied = abs(constrain_violation) < 0.1*kl_step # allow some small constraint violation
@@ -133,21 +133,21 @@ function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
 end
 
 
-using Base.Test
-n,m,T = 1,1,1
-
-traj_new  = GaussianDist(Float64,T,n,m)
-traj_old  = GaussianDist(Float64,T,n,m)
-xnew = zeros(n,T)
-unew = zeros(m,T)
-Σnew = cat(3,[eye(n+m) for t=1:T]...)
-@test kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old) == 0
-
-traj_new.μu = ones(m,T)
-kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
-
-traj_new.μx = ones(m,T)
-kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
-
-traj_new.Σ .*=2
-kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
+# using Base.Test
+# n,m,T = 1,1,1
+#
+# traj_new  = GaussianDist(Float64,T,n,m)
+# traj_old  = GaussianDist(Float64,T,n,m)
+# xnew = zeros(n,T)
+# unew = zeros(m,T)
+# Σnew = cat(3,[eye(n+m) for t=1:T]...)
+# @test kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old) == 0
+#
+# traj_new.μu = ones(m,T)
+# kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
+#
+# traj_new.μx = ones(m,T)
+# kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
+#
+# traj_new.Σ .*=2
+# kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)

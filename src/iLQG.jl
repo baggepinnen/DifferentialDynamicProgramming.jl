@@ -131,25 +131,25 @@ title={Control-Limited Differential Dynamic Programming},
 year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}`
 """
 function iLQG(f,fT,df, x0, u0;
-    lims         = [],
-    alpha        = logspace(0,-3,11),
-    tol_fun      = 1e-7,
-    tol_grad     = 1e-4,
-    max_iter     = 500,
-    λ            = 1,
-    dλ           = 1,
-    λfactor      = 1.6,
-    λmax         = 1e10,
-    λmin         = 1e-6,
-    regType     = 1,
+    lims             = [],
+    alpha            = logspace(0,-3,11),
+    tol_fun          = 1e-7,
+    tol_grad         = 1e-4,
+    max_iter         = 500,
+    λ                = 1,
+    dλ               = 1,
+    λfactor          = 1.6,
+    λmax             = 1e10,
+    λmin             = 1e-6,
+    regType          = 1,
     reduce_ratio_min = 0,
-    diff_fun     = -,
-    plot         = 1,
-    verbosity    = 2,
-    plot_fun     = x->0,
-    cost         = [],
-    kl_step      = 0,
-    traj_prev    = 0
+    diff_fun         = -,
+    plot             = 1,
+    verbosity        = 2,
+    plot_fun         = x->0,
+    cost             = [],
+    kl_step          = 0,
+    traj_prev        = 0
     )
     debug("Entering iLQG")
 
@@ -193,10 +193,6 @@ function iLQG(f,fT,df, x0, u0;
     #     plot_fun(x) # user plotting
 
     if diverge
-        Vx=Vxx   = NaN
-        L        = zeros(m,n,N)
-        cost     = []
-        trace    = trace[1]
         if verbosity > 0
             @printf("\nEXIT: Initial control sequence caused divergence\n")
         end
@@ -211,6 +207,7 @@ function iLQG(f,fT,df, x0, u0;
     print_head         = 10 # print headings every print_head lines
     last_head          = print_head
     g_norm             = Vector{Float64}()
+    Vx = Vxx           = emptyMat3(Float64)
     t_start            = time()
     verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")
     satisfied          = true
@@ -219,7 +216,6 @@ function iLQG(f,fT,df, x0, u0;
     while accepted_iter <= max_iter
         trace[iter].iter = iter
         back_pass_done   = false
-        l                = Matrix{Float64}()
         dV               = Vector{Float64}()
         reduce_ratio     = 0.
         traj_prev        = traj_new
@@ -350,7 +346,7 @@ function iLQG(f,fT,df, x0, u0;
 
 
     div > kl_step && abs(div - kl_step) > 0.1*kl_step && warn("KL divergence too high when done")
-    verbosity > 0 && print_timing(trace,iter,t_start,cost)
+    verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,λ)
 
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
@@ -385,7 +381,7 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
     return xnew,unew,cnew,sigmanew
 end
 
-function print_timing(trace,iter,t_start,cost)
+function print_timing(trace,iter,t_start,cost,g_norm,λ)
     diff_t  = [trace[i].time_derivs for i in 1:iter]
     diff_t  = sum(diff_t[!isnan(diff_t)])
     back_t  = [trace[i].time_backward for i in 1:iter]
