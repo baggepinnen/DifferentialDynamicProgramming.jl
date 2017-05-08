@@ -27,7 +27,7 @@ end
 macro end_backward_pass()
     quote
         if isempty(lims) || lims[1,1] > lims[1,2]
-            debug("#  no control limits: Cholesky decomposition, check for non-PD")
+            # debug("#  no control limits: Cholesky decomposition, check for non-PD")
             try
                 R = chol(Hermitian(QuuF))
             catch
@@ -35,12 +35,12 @@ macro end_backward_pass()
                 return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx, dV
             end
 
-            debug("#  find control law")
+            # debug("#  find control law")
             kK  = -R\(R'\[Qu Qux_reg])
             k_i = kK[:,1]
             K_i = kK[:,2:n+1]
         else
-            debug("#  solve Quadratic Program")
+            # debug("#  solve Quadratic Program")
             lower = lims[:,1]-u[:,i]
             upper = lims[:,2]-u[:,i]
             result = 1
@@ -59,14 +59,14 @@ macro end_backward_pass()
                 K_i[free,:]   = Lfree
             end
         end
-        debug("#  update cost-to-go approximation")
+        # debug("#  update cost-to-go approximation")
         # Qxx         = Hermitian(Qxx)
         dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
         Vx[:,i]    = Qx + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
         Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
         Vxx[:,:,i] = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
 
-        debug("# save controls/gains")
+        # debug("# save controls/gains")
         k[:,i]   = k_i
         K[:,:,i] = K_i
     end |> esc

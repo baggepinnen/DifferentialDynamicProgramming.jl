@@ -30,7 +30,7 @@ type GaussianDist{P}
 end
 
 GaussianDist(P) = GaussianDist(0,0,0,emptyMat3(P),emptyMat3(P),emptyMat3(P),emptyMat2(P),emptyMat2(P))
-GaussianDist(P,T,n,m) = GaussianDist(T,n,m,zeros(P,n,n,T),zeros(P,n,m,T),cat(3,[eye(P,n+m) for t=1:T]...),zeros(P,n,T),zeros(P,m,T))
+GaussianDist(P,T,n,m) = GaussianDist(T,n,m,zeros(P,n,n,T),zeros(P,n,m,T),cat(3,[eye(P,n) for t=1:T]...),zeros(P,n,T),zeros(P,m,T))
 Base.isempty(gd::GaussianDist) = gd.T == gd.n == gd.m == 0
 type GaussianTrajDist{P}
     policy::GaussianDist{P}
@@ -235,14 +235,17 @@ function iLQG(f,fT,df, x0, u0;
                 cxkl,cukl,cxxkl,cuukl,cxukl = dkl(traj_new) # TODO: this may need both traj_new and traj_prev
                 # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
                 # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
-                cx,cu,cxx,cuu,cxu = cx./η.+cxkl, cu./η.+cukl, cxx./η.+cxxkl, cuu./η.+cuukl, cxu./η.+cxukl # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, this works but can be sped up significantly
+                if ndims(cxx) == 2 && size(cxxkl) != () # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
+                    cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
+                end
+                cx,cu,cxx,cuu,cxu = cx./η.+cxkl, cu./η.+cukl, cxx./η.+cxxkl, cuu./η.+cuukl, cxu./η.+cxukl
             end
             diverge, traj_new,Vx, Vxx,dV = if linearsys
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,λ, regType, lims,x,u)
             else
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
             end
-
+            iter == 1 && (traj_prev = traj_new) # TODO: set k μu to zero fir traj_prev
             trace[iter].time_backward = toq()
 
             if diverge > 0
@@ -254,7 +257,7 @@ function iLQG(f,fT,df, x0, u0;
             back_pass_done = true
         end
 
-        k, K = traj_new.μu, traj_new.fx # TODO: μu or fu ? this need to be cleared out
+        k, K = traj_new.μu, traj_new.fx
         #  check for termination due to small gradient
         g_norm = mean(maximum(abs.(k) ./ (abs.(u)+1),1))
         trace[iter].grad_norm = g_norm
@@ -270,8 +273,6 @@ function iLQG(f,fT,df, x0, u0;
             tic()
             debug("#  serial backtracking line-search")
             for alphai = alpha
-                # TODO: the error is that u+l*alphai is not entered as before, have to get it from traj_new?
-                # TODO: do we put xnew unew etc into traj_new?
                 xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
                 expected_reduction = -alphai*(dV[1] + alphai*dV[2])
@@ -283,7 +284,7 @@ function iLQG(f,fT,df, x0, u0;
                 end
                 if reduce_ratio > reduce_ratio_min
                     fwd_pass_done = true
-                    η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
+                    @show η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
                     break
                 end
             end
@@ -309,7 +310,8 @@ function iLQG(f,fT,df, x0, u0;
             λ *= dλ
 
             #  accept changes
-            x,u,cost  = xnew,unew,costnew # TODO: update traj_old
+            x,u,cost  = xnew,unew,costnew
+            traj_new.μx,traj_new.μu = x,u
             flg_change = true
             plot_fun(x)
             if Δcost < tol_fun && satisfied#  terminate ?
@@ -377,7 +379,7 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
         end
     end
     # cnew[N+1] = fT(xnew[:,N+1])
-    sigmanew = zeros(m+n,m+n,N) # TODO: this function should calculate the covariance matrix as well
+    sigmanew = cat(3,[eye(n) for i = 1:N]...) # TODO: this function should calculate the covariance matrix as well
     return xnew,unew,cnew,sigmanew
 end
 

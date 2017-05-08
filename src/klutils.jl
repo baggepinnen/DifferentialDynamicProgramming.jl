@@ -10,8 +10,8 @@ function dkl(traj_new)
     m,n,T  = traj_new.m,traj_new.n,traj_new.T
     cx,cu,cxx,cuu,cxu = zeros(n,T),zeros(m,T),zeros(n,n,T),zeros(m,m,T),zeros(n,m,T)
     for t in 1:T
-        K, k       = traj_new.fx[:,:,t], traj_new.μu[:,t] # TODO: varför inte fu?
-        Σi         = inv(traj_new.Σ[:,:,t] + 1e-5*I)
+        K, k       = traj_new.fx[:,:,t], traj_new.μu[:,t]
+        Σi         = traj_new.Σ[:,:,t]#inv(traj_new.Σ[:,:,t] + 1e-5*I) # TODO: the value that is save is actually Quu, which itself is inverse of policy covariance
         cx[:,t],cu[:,t],cxx[:,:,t],cuu[:,:,t],cxu[:,:,t]  = dkli(Σi,K,k)
     end
     return cx,cu,cxx,cuu,cxu
@@ -22,7 +22,7 @@ function dkli(Σi,K,k)
     cx  = K'*Σi*k
     cu  = -Σi*k
     cxx = K'*Σi*K
-    cuu = -Σi*k
+    cuu = -Σi
     cxu = -K'*Σi
     cx,cu,cxx,cuu,cxu
 end
@@ -77,22 +77,23 @@ function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::Gauss
     T,m     = new_traj.T, new_traj.m
     kldiv = zeros(T)
     for t = 1:T
-        μt    = μ_new[:,t]
-        Σt    = Σ_new[:,:,t]
-        Kp    = prev_traj.fx[:,:,t]
-        Kn    = new_traj.fx[:,:,t]
-        kp    = prev_traj.μu[:,t]
-        kn    = new_traj.μu[:,t]
-        Σp    = prev_traj.Σ[:,:,t]
-        Σn    = new_traj.Σ[:,:,t]
-        Σip   = inv(Σp + 1e-5*I) # TODO: I added some regularization here, should maybe be a hyper parameter?
-        Σin   = inv(Σn + 1e-5*I)
-        dim   = size(Σp,1)
+        μt     = μ_new[:,t]
+        Σt     = Σ_new[:,:,t]
+        Kp     = prev_traj.fx[:,:,t]
+        Kn     = new_traj.fx[:,:,t]
+        kp     = prev_traj.μu[:,t]
+        kn     = new_traj.μu[:,t]
+        Σip    = prev_traj.Σ[:,:,t]# TODO: the value that is save is actually Quu, which itself is inverse of policy covariance
+        Σin    = new_traj.Σ[:,:,t]
+        Σp     = inv(Σip + 1e-5*I) # TODO: I added some regularization here, should maybe be a hyper parameter?
+        Σn     = inv(Σin + 1e-5*I)
+        dim    = size(Σip,1)
         k_diff = kp-kn
         K_diff = Kp-Kn
-        kldiv[t] = 1/2 * (trace(Σp\Σn) + k_diff⋅(Σp\k_diff) - dim + logdet(Σip) - logdet(Σin) )
-        kldiv[t] +=1/2 * ( μt'K_diff'Σip*K_diff*μt + trace(K_diff'Σip*K_diff*Σt) )
-        kldiv[t] = max(0,kldiv[t])
+        kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff⋅(Σip*k_diff) - dim + logdet(Σip) - logdet(Σin) )
+        kldiv[t] += 1/2 * ( μt'K_diff'Σip*K_diff*μt + trace(K_diff'Σip*K_diff*Σt) )[1]
+        # @show kldiv[t]
+        kldiv[t] = abs(kldiv[t]) #max(0,kldiv[t]) # TODO: changed for abs here instead :O
     end
     return sum(kldiv)
 end
@@ -110,15 +111,15 @@ This Function caluculates the step size
 function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
     kl_step > 0 || (return (1., true,0))
 
-    min_η  = 1e-5 # TODO: these should be hyperparameters
-    max_η  = 1e16 # TODO: these should be hyperparameters
-    divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev)
-    constrain_violation    = divergence - kl_step
+    min_η  = 1#1e-5 # TODO: these should be hyperparameters
+    max_η  = 100#1e16 # TODO: these should be hyperparameters
+    @show divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev)
+    @show constraint_violation    = divergence - kl_step
     # Convergence check - constraint satisfaction.
-    satisfied = abs(constrain_violation) < 0.1*kl_step # allow some small constraint violation
+    satisfied = constraint_violation < 0.1*kl_step # allow some small constraint violation # TODO: I removed the absolute value on constraint_violation
     satisfied && debug(@sprintf("KL: %12.7f / %12.7f, converged",  divergence, kl_step))
 
-    if constrain_violation < 0 # η was too big.
+    if constraint_violation < 0 # η was too big.
         max_η = η
         geom = √(min_η*max_η)  # Geometric mean.
         new_η = max(geom, 0.1*max_η)
