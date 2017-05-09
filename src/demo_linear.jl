@@ -68,7 +68,7 @@ function demo_linear(;kwargs...)
     # plotFn(x)  = plot(squeeze(x,2)')
 
     # run the optimization
-    @time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0; lims=lims,kwargs...);
+    @time x, u, traj_new, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0; lims=lims,kwargs...);
 
     totalcost = [ t.cost for t in otrace]
     iters = sum(totalcost .> 0)
@@ -76,5 +76,5 @@ function demo_linear(;kwargs...)
 
 
     plotstuff_linear(x,u,cost,totalcost)
-
+    x, u, traj_new, Vx, Vxx, cost, otrace
 end
