@@ -300,7 +300,7 @@ function iLQG(f,fT,df, x0, u0;
             @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(λ)    η    divergence\n")
         end
 
-        if fwd_pass_done
+        if fwd_pass_done && satisfied # TODO: I added satisfied here, verify if this is reasonable
             if verbosity > 1
                 @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f%-12.3g%-12.3g\n",
                 iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ), η, divergence)
@@ -311,7 +311,7 @@ function iLQG(f,fT,df, x0, u0;
 
             #  accept changes
             x,u,cost  = copy(xnew),copy(unew),copy(costnew)
-            traj_new.μx,traj_new.μu = copy(x),copy(u)
+            traj_new.μx,traj_new.μu = copy(x),copy(u) # TODO: maybe only accept changes if kl satisfied?
             flg_change = true
             plot_fun(x)
             if Δcost < tol_fun && satisfied#  terminate ?
