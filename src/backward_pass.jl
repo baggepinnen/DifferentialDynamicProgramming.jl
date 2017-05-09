@@ -15,7 +15,7 @@ macro setupQTIC()
         K   = zeros(m,n,N)
         Vx  = zeros(n,N)
         Vxx = zeros(n,n,N)
-        dV  = [0., 0.] # TODO: WTF is dV?
+        dV  = [0., 0.]
 
         Vx[:,N]    = cx[:,N]
         Vxx[:,:,N] = cxx
@@ -196,7 +196,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     K   = zeros(m,n,N)
     Vx  = zeros(n,N)
     Vxx = zeros(n,n,N)
-    dV  = [0., 0.] # TODO: WTF is dV?
+    dV  = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,end]
@@ -206,12 +206,12 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     for i = N-1:-1:1
         Qu          = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
         Qx          = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
-        Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
-        Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         Vxx_reg     = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
         Qux_reg     = cxu[:,:,i]' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
         QuuF        = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
+        Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
+        Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
+        Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
 
         @end_backward_pass
     end

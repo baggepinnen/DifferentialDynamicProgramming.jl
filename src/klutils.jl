@@ -22,8 +22,8 @@ function dkli(Σi,K,k)
     cx  = K'*Σi*k
     cu  = -Σi*k
     cxx = K'*Σi*K
-    cuu = -Σi
-    cxu = -K'*Σi
+    cuu = Σi #TODO: defenetely + sign here?
+    cxu = -K'Σi #TODO: maybe -Σi*K? Does fuck up array dims later, https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L355
     cx,cu,cxx,cuu,cxu
 end
 
@@ -31,7 +31,7 @@ function KLmv(Σi,K,k)
     M =
     [K'*Σi*K  -K'*Σi;
     -Σi*K    Σi ]
-    @show K', Σi, k
+    K', Σi, k
     v = [K'*Σi*k  -Σi*k]
     M,v
 end
@@ -71,7 +71,7 @@ function kl_div(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDi
     return sum(kldiv)
 end
 
-# TODO: jag höll på att fundera på hur KL-contraintet skall hanteras. Räknas det ut på rätt ställe och på rätt sätt? Denna metoden tar inte hänsyn till förändringen i x
+
 function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDist)
     μ_new = xnew# [xnew; unew] verkar inte som att unew behövs??
     T,m     = new_traj.T, new_traj.m
@@ -83,18 +83,23 @@ function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::Gauss
         Kn     = new_traj.fx[:,:,t]
         kp     = prev_traj.μu[:,t]
         kn     = new_traj.μu[:,t]
-        Σip    = prev_traj.Σ[:,:,t]# TODO: the value that is save is actually Quu, which itself is inverse of policy covariance
-        Σin    = new_traj.Σ[:,:,t]
-        Σp     = inv(Σip + 1e-5*I) # TODO: I added some regularization here, should maybe be a hyper parameter?
-        Σn     = inv(Σin + 1e-5*I)
+        Σp    = prev_traj.Σ[:,:,t]# TODO: the value that is save is actually Quu, which itself is inverse of policy covariance
+        Σn    = new_traj.Σ[:,:,t]
+        Σip     = inv(Σp + 1e-15*I) # TODO: I added some regularization here, should maybe be a hyper parameter?
+        Σin     = inv(Σn + 1e-15*I)
         dim    = size(Σip,1)
         k_diff = kp-kn
         K_diff = Kp-Kn
-        kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff⋅(Σip*k_diff) - dim + logdet(Σip) - logdet(Σin) )
-        kldiv[t] += 1/2 * ( μt'K_diff'Σip*K_diff*μt + trace(K_diff'Σip*K_diff*Σt) )[1]
-        # @show kldiv[t]
-        kldiv[t] = abs(kldiv[t]) #max(0,kldiv[t]) # TODO: changed for abs here instead :O
+        try
+            kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff⋅(Σip*k_diff) - dim + logdet(Σip) - logdet(Σin) )
+            kldiv[t] +=  ( μt'K_diff'Σip*K_diff*μt + 1/2 *trace(K_diff'Σip*K_diff*Σt) )[1]
+        catch e
+            println(e)
+            @show Σip, Σin
+            error("quitting")
+        end
     end
+    kldiv = max.(0,kldiv) # TODO: change to negative, seem to have a sign error
     return sum(kldiv)
 end
 
@@ -110,13 +115,12 @@ This Function caluculates the step size
 """
 function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
     kl_step > 0 || (return (1., true,0))
-
-    min_η  = 1#1e-5 # TODO: these should be hyperparameters
-    max_η  = 100#1e16 # TODO: these should be hyperparameters
-    @show divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev)
-    @show constraint_violation    = divergence - kl_step
+    min_η  = 1e-5#1e-5 # TODO: these should be hyperparameters
+    max_η  = 1e16#1e16 # TODO: these should be hyperparameters
+    divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev)
+    constraint_violation    = divergence - kl_step
     # Convergence check - constraint satisfaction.
-    satisfied = constraint_violation < 0.1*kl_step # allow some small constraint violation # TODO: I removed the absolute value on constraint_violation
+    satisfied = (constraint_violation) < 0.1*kl_step # allow some small constraint violation # TODO: Why the absolute value on constraint_violation?
     satisfied && debug(@sprintf("KL: %12.7f / %12.7f, converged",  divergence, kl_step))
 
     if constraint_violation < 0 # η was too big.

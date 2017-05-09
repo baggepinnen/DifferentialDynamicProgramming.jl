@@ -15,7 +15,9 @@ type Trace
     time_derivs::Float64
     time_forward::Float64
     time_backward::Float64
-    Trace() = new(0,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.)
+    divergence::Float64
+    η::Float64
+    Trace() = new(0,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.)
 end
 
 type GaussianDist{P}
@@ -164,7 +166,7 @@ function iLQG(f,fT,df, x0, u0;
 
     # --- initialize trace data structure
     trace = [Trace() for i in 1:min( max_iter+1,1e6)]
-    trace[1].iter,trace[1].λ,trace[1].dλ = 1,λ,dλ
+    trace[1].iter,trace[1].λ,trace[1].dλ,trace[1].η = 1,λ,dλ,η
 
     # --- initial trajectory
     debug("Setting up initial trajectory")
@@ -203,7 +205,7 @@ function iLQG(f,fT,df, x0, u0;
     flg_change         = true
     Δcost              = 0.
     expected_reduction = 0.
-    div                = 0.
+    divergence         = 0.
     print_head         = 10 # print headings every print_head lines
     last_head          = print_head
     g_norm             = Vector{Float64}()
@@ -231,10 +233,7 @@ function iLQG(f,fT,df, x0, u0;
         while !back_pass_done
             tic()
             if kl_step > 0
-                @show η
-                cxkl,cukl,cxxkl,cuukl,cxukl = dkl(traj_new) # TODO: this may need both traj_new and traj_prev
-                # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
-                # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
+                cxkl,cukl,cxxkl,cuukl,cxukl = dkl(traj_new)
                 if ndims(cxx) == 2 && size(cxxkl) != () # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
                     cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
                 end
@@ -250,6 +249,7 @@ function iLQG(f,fT,df, x0, u0;
 
             if diverge > 0
                 verbosity > 2 && @printf("Cholesky failed at timestep %d.\n",diverge)
+                η *= 2 # TODO: I added this line https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L431
                 dλ,λ = max(dλ*λfactor, λfactor), max(λ*dλ, λmin)
                 if λ >  λmax; break; end
                 continue
@@ -276,6 +276,7 @@ function iLQG(f,fT,df, x0, u0;
                 xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
                 expected_reduction = -alphai*(dV[1] + alphai*dV[2])
+                expected_reduction *= η # TODO: I added this line
                 reduce_ratio = if expected_reduction > 0
                     Δcost/expected_reduction
                 else
@@ -284,11 +285,10 @@ function iLQG(f,fT,df, x0, u0;
                 end
                 if reduce_ratio > reduce_ratio_min
                     fwd_pass_done = true
-                    @show η, satisfied, div = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
+                    η, satisfied, divergence = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
                     break
                 end
             end
-            alphai = fwd_pass_done ? alphai : NaN
             trace[iter].time_forward = toq()
         end
 
@@ -297,21 +297,21 @@ function iLQG(f,fT,df, x0, u0;
         #  print headings
         if verbosity > 1 && last_head == print_head
             last_head = 0
-            @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(λ)\n")
+            @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(λ)    η    divergence\n")
         end
 
         if fwd_pass_done
             if verbosity > 1
-                @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f\n",
-                iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ))
+                @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f%-12.3g%-12.3g\n",
+                iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ), η, divergence)
                 last_head += 1
             end
             dλ = min(dλ / λfactor, 1/ λfactor)
             λ *= dλ
 
             #  accept changes
-            x,u,cost  = xnew,unew,costnew
-            traj_new.μx,traj_new.μu = x,u
+            x,u,cost  = copy(xnew),copy(unew),copy(costnew)
+            traj_new.μx,traj_new.μu = copy(x),copy(u)
             flg_change = true
             plot_fun(x)
             if Δcost < tol_fun && satisfied#  terminate ?
@@ -320,10 +320,12 @@ function iLQG(f,fT,df, x0, u0;
             end
             accepted_iter += 1
         else #  no cost improvement
+            alphai =  NaN
+            η *= 2 # TODO: I added this line
             dλ,λ  = max(dλ * λfactor,  λfactor), max(λ * dλ,  λmin)#  increase λ
             if verbosity > 1
-                @printf("%-12d%-12s%-12.3g%-12.3g%-12.3g%-12.1f\n",
-                iter,"NO STEP", Δcost, expected_reduction, g_norm, log10(λ))
+                @printf("%-12d%-12s%-12.3g%-12.3g%-12.3g%-12.1f%-12.3g%-12.3g\n",
+                iter,"NO STEP", Δcost, expected_reduction, g_norm, log10(λ), η, divergence)
                 last_head = last_head+1
             end
             if λ > λmax #  terminate ?
@@ -339,6 +341,8 @@ function iLQG(f,fT,df, x0, u0;
         trace[iter].improvement  = Δcost
         trace[iter].cost         = sum(cost)
         trace[iter].reduce_ratio = reduce_ratio
+        trace[iter].divergence   = divergence
+        trace[iter].η            = η
         graphics( plot,x,u,cost,K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
         iter += 1
     end
@@ -347,7 +351,7 @@ function iLQG(f,fT,df, x0, u0;
     iter == 1 && error("Failure: no iterations completed, something is wrong. Try enabling the debug flag in DifferentialDynamicProgramming.jl for verbose printing.")
 
 
-    div > kl_step && abs(div - kl_step) > 0.1*kl_step && warn("KL divergence too high when done")
+    divergence > kl_step && abs(divergence - kl_step) > 0.1*kl_step && warn("KL divergence too high when done")
     verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,λ)
 
     return x, u, traj_new, Vx, Vxx, cost, trace
