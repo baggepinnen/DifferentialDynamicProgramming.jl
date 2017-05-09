@@ -163,7 +163,7 @@ function iLQG(f,fT,df, x0, u0;
             debug("# test different backtracing parameters alpha and break loop when first succeeds")
             (x,un,cost)  = forward_pass(x0[:,1],alpha*u,[],[],[],1,f,fT, lims,[])
             debug("# simplistic divergence test")
-            if all(abs(x[:]) .< 1e8)
+            if all(abs.(x) .< 1e8)
                 u = un
                 diverge = false
                 break
@@ -223,8 +223,8 @@ function iLQG(f,fT,df, x0, u0;
 
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         backPassDone   = false
-        l = Matrix{Float64}()
-        dV = Vector{Float64}()
+        l = Matrix{Float64}(0,0)
+        dV = Vector{Float64}(0)
         while !backPassDone
 
             tic()
@@ -248,7 +248,7 @@ function iLQG(f,fT,df, x0, u0;
         end
 
         #  check for termination due to small gradient
-        g_norm = mean(maximum(abs(l) ./ (abs(u)+1),1))
+        g_norm = mean(maximum(abs.(l) ./ (abs.(u)+1),1))
         trace[iter].grad_norm = g_norm
         if g_norm <  tolGrad && lambda < 1e-5
             # dlambda   = min(dlambda /  lambdaFactor, 1/ lambdaFactor)
@@ -360,11 +360,11 @@ function iLQG(f,fT,df, x0, u0;
 
     if iter > 1
         diff_t = [trace[i].time_derivs for i in 1:iter]
-        diff_t = sum(diff_t[!isnan(diff_t)])
+        diff_t = sum(diff_t[.!isnan.(diff_t)])
         back_t = [trace[i].time_backward for i in 1:iter]
-        back_t = sum(back_t[!isnan(back_t)])
+        back_t = sum(back_t[.!isnan.(back_t)])
         fwd_t = [trace[i].time_forward for i in 1:iter]
-        fwd_t = sum(fwd_t[!isnan(fwd_t)])
+        fwd_t = sum(fwd_t[.!isnan.(fwd_t)])
         total_t = time()-t_start
         if verbosity > 0
             info = 100/total_t*[diff_t, back_t, fwd_t, (total_t-diff_t-back_t-fwd_t)]
