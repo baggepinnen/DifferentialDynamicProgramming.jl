@@ -1,8 +1,8 @@
 import Base: length
-EmptyMat3 = Array(Float64,0,0,0)
-EmptyMat2 = Array(Float64,0,0)
-emptyMat3(P) = Array(P,0,0,0)
-emptyMat2(P) = Array(P,0,0)
+EmptyMat3 = Array{Float64}(0,0,0)
+EmptyMat2 = Array{Float64}(0,0)
+emptyMat3(P) = Array{P}(0,0,0)
+emptyMat2(P) = Array{P}(0,0)
 type Trace
     iter::Int64
     λ::Float64
@@ -268,7 +268,7 @@ function iLQG(f,fT,df, x0, u0;
 
         # ====== STEP 3: line-search to find new control sequence, trajectory, cost
         fwd_pass_done  = false
-        xnew,unew,costnew,sigmanew = Matrix{Float64}(),Matrix{Float64}(),Vector{Float64}(),Matrix{Float64}()
+        xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
         if back_pass_done
             tic()
             debug("#  serial backtracking line-search")
@@ -361,7 +361,7 @@ end
 function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
     n         = size(x0,1)
     m,N       = size(u)
-    xnew      = Array(eltype(x0),n,N)
+    xnew      = Array{eltype(x0)}(n,N)
     xnew[:,1] = x0
     unew      = copy(u)
     cnew      = zeros(N)
@@ -389,11 +389,11 @@ end
 
 function print_timing(trace,iter,t_start,cost,g_norm,λ)
     diff_t  = [trace[i].time_derivs for i in 1:iter]
-    diff_t  = sum(diff_t[!isnan(diff_t)])
+    diff_t  = sum(diff_t[.!isnan.(diff_t)])
     back_t  = [trace[i].time_backward for i in 1:iter]
-    back_t  = sum(back_t[!isnan(back_t)])
+    back_t  = sum(back_t[.!isnan.(back_t)])
     fwd_t   = [trace[i].time_forward for i in 1:iter]
-    fwd_t   = sum(fwd_t[!isnan(fwd_t)])
+    fwd_t   = sum(fwd_t[.!isnan.(fwd_t)])
     total_t = time()-t_start
     info = 100/total_t*[diff_t, back_t, fwd_t, (total_t-diff_t-back_t-fwd_t)]
     @printf("\n iterations:   %-3d\n

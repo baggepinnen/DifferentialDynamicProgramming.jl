@@ -26,7 +26,7 @@ end
      `Hfree`        - subspace cholesky factor   (n_free * n_free)
      `free`         - set of free dimensions     (n)
 """
-function boxQP(H,g,lower,upper,x0;
+function boxQP(H,g,lower,upper,x0::AbstractVector;
                maxIter        = 100,
                minGrad        = 1e-8,
                minRelImprove  = 1e-8,
@@ -50,15 +50,15 @@ function boxQP(H,g,lower,upper,x0;
     result   = 0
     gnorm    = 0.
     nfactor  = 0
-    trace    = Array(QPTrace,maxIter)
+    trace    = Array{QPTrace}(maxIter)
     Hfree    = zeros(n,n)
-    clamp(x) = max(lower, min(upper, x))
+
 
 
     debug("# initial state")
-    x = clamp(x0[:])
+    x = clamp.(x0,lower,upper)
     LU = [lower upper]
-    LU[!isfinite(LU)] = NaN
+    LU[.!isfinite.(LU)] = NaN
 
     debug("# initial objective value")
     value    = (x'*g + 0.5*x'*H*x )[1]
@@ -93,7 +93,7 @@ function boxQP(H,g,lower,upper,x0;
         for i = 1:n
             clamped[i]   = ((x[i,1] == lower[i])&&(grad[i,1]>0)) || ((x[i,1] == upper[i])&&(grad[i,1]<0))
         end
-        free = !clamped
+        free = .!clamped
 
         debug("# check for all clamped")
         if all(clamped)
@@ -138,12 +138,12 @@ function boxQP(H,g,lower,upper,x0;
         debug("# armijo linesearch")
         step  = 1
         nstep = 0
-        xc    = clamp(x+step*search)
+        xc    = clamp.(x+step*search,lower,upper)
         vc    = (xc'*g + 0.5*xc'*H*xc)[1]
         while (vc - oldvalue)/(step*sdotg) < Armijo
             step  = step*stepDec
             nstep += 1
-            xc    = clamp(x+step*search)
+            xc    = clamp.(x+step*search,lower,upper)
             vc    = (xc'*g + 0.5*xc'*H*xc)[1]
             if step<minStep
                 result = 2
@@ -188,13 +188,13 @@ function boxQP(H,g,lower,upper,x0;
     return x,result,Hfree,free,trace
 end
 
-function demoQP()
+function demoQP(;kwargs...)
     n 		= 500
-    g 		= randn(n,1)
+    g 		= randn(n)
     H 		= randn(n,n)
     H 		= H*H'
-    lower 	= -ones(n,1)
-    upper 	=  ones(n,1)
-    @time boxQP(H, g, lower, upper, randn(n,1),print=1)
+    lower 	= -ones(n)
+    upper 	=  ones(n)
+    @time boxQP(H, g, lower, upper, randn(n);print=1, kwargs...)
 
 end

@@ -19,7 +19,7 @@ macro setupQTIC()
 
         Vx[:,N]    = cx[:,N]
         Vxx[:,:,N] = cxx
-        Quu        = Array(T,m,m,N)
+        Quu        = Array{T}(m,m,N)
         diverge    = 0
     end |> esc
 end
@@ -86,7 +86,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Vx  = zeros(n,N)
     Vxx = zeros(n,n,N)
     dV  = [0., 0.]
-    Quu = Array(T,m,m,N)
+    Quu = Array{T}(m,m,N)
     Vx[:,N]     = cx[:,N]
     Vxx[:,:,N]  = cxx[:,:,N]
 
@@ -200,7 +200,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
 
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,end]
-    Quu        = Array(T,m,m,N)
+    Quu        = Array{T}(m,m,N)
     diverge    = 0
 
     for i = N-1:-1:1
@@ -232,7 +232,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
     K   = zeros(m,n,N)
     Vx  = zeros(n,N)
     Vxx = zeros(n,n,N)
-    Quu = Array(T,m,m,N)
+    Quu = Array{T}(m,m,N)
     dV  = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
