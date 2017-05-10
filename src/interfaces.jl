@@ -16,7 +16,7 @@ function df(model::AbstractModel, x, u, I::UnitRange)
 end
 ```
 """
-abstract AbstractModel
+abstract type AbstractModel end
 
 """
     fit_model(::Type{AbstractModel}, x,u,xnew)::AbstractModel
@@ -67,7 +67,7 @@ function dc(::Type{AbstractCost}, x, u)
 end
 ```
 """
-abstract AbstractCost
+abstract type AbstractCost end
 
 function calculate_cost(::Type{AbstractCost}, x::AbstractVector, u)::Number
     error("This function is not implemented for your type")

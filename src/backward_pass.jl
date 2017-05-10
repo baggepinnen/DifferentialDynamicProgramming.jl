@@ -20,6 +20,7 @@ macro setupQTIC()
         Vx[:,N]    = cx[:,N]
         Vxx[:,:,N] = cxx
         Quu        = Array{T}(m,m,N)
+        Quui        = Array{T}(m,m,N)
         diverge    = 0
     end |> esc
 end
@@ -32,7 +33,7 @@ macro end_backward_pass()
                 R = chol(Hermitian(QuuF))
             catch
                 diverge  = i
-                return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx, dV
+                return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
             end
 
             # debug("#  find control law")
@@ -51,7 +52,7 @@ macro end_backward_pass()
             # end
             if result < 1
                 diverge  = i
-                return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx, dV
+                return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
             end
             K_i  = zeros(m,n)
             if any(free)
@@ -72,23 +73,26 @@ macro end_backward_pass()
     end |> esc
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) # nonlinear time variant
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false) # nonlinear time variant
 
-    m,N = size(u)
-    n   = size(cx,1)
-    cx  = reshape(cx, (n, N))
-    cu  = reshape(cu, (m, N))
-    cxx = reshape(cxx, (n, n, N))
-    cxu = reshape(cxu, (n, m, N))
-    cuu = reshape(cuu, (m, m, N))
-    k   = zeros(m,N)
-    K   = zeros(m,n,N)
-    Vx  = zeros(n,N)
-    Vxx = zeros(n,n,N)
-    dV  = [0., 0.]
-    Quu = Array{T}(m,m,N)
-    Vx[:,N]     = cx[:,N]
-    Vxx[:,:,N]  = cxx[:,:,N]
+    m,N        = size(u)
+    n          = size(cx,1)
+    cx         = reshape(cx, (n, N))
+    cu         = reshape(cu, (m, N))
+    cxx        = reshape(cxx, (n, n, N))
+    cxu        = reshape(cxu, (n, m, N))
+    cuu        = reshape(cuu, (m, m, N))
+    k          = zeros(m,N)
+    K          = zeros(m,n,N)
+    Vx         = zeros(n,N)
+    Vxx        = zeros(n,n,N)
+    Quu        = Array{T}(m,m,N)
+    Quui       = Array{T}(m,m,N)
+    dV         = [0., 0.]
+    Vx[:,N]    = cx[:,N]
+    Vxx[:,:,N] = cxx[:,:,N]
+    Quu[:,:,N] = cuu
+    updateQuui && (Quui[:,:,N] = inv(Quu[:,:,N]))
 
     diverge  = 0
     for i = N-1:-1:1
@@ -117,7 +121,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
+    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
 # GaussianDist
@@ -131,7 +135,7 @@ end
 # μu::Array{P,2}
 
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) # quadratic timeinvariant cost, dynamics nonlinear time variant
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false) # quadratic timeinvariant cost, dynamics nonlinear time variant
 
     @setupQTIC
 
@@ -149,7 +153,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
             fuuVx = vectens(Vx[:,i+1],fuu[:,:,:,i])
             Quu[:,:,i]   = Quu[:,:,i] + fuuVx
         end
-
+        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         Qxx = cxx  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         isempty(fxx) || (Qxx .+= vectens(Vx[:,i+1],fxx[:,:,:,i]))
         Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
@@ -161,10 +165,10 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
+    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeinvariant cost, linear time variant dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false) # quadratic timeinvariant cost, linear time variant dynamics
     @setupQTIC
     for i = N-1:-1:1
         Qu         = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
@@ -175,32 +179,35 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
         Vxx_reg    = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
         Qux_reg    = cxu' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
         QuuF       = cuu + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
-
+        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
+    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeVariant cost, linear time variant dynamics
-    m   = size(u,1)
-    n,N = size(fx,1,3)
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false) # quadratic timeVariant cost, linear time variant dynamics
+    m          = size(u,1)
+    n,N        = size(fx,1,3)
 
-    cx  = reshape(cx, (n, N))
-    cu  = reshape(cu, (m, N))
-    cxx = reshape(cxx, (n, n, N))
-    cxu = reshape(cxu, (n, m, N))
-    cuu = reshape(cuu, (m, m, N))
+    cx         = reshape(cx, (n, N))
+    cu         = reshape(cu, (m, N))
+    cxx        = reshape(cxx, (n, n, N))
+    cxu        = reshape(cxu, (n, m, N))
+    cuu        = reshape(cuu, (m, m, N))
 
-    k   = zeros(m,N)
-    K   = zeros(m,n,N)
-    Vx  = zeros(n,N)
-    Vxx = zeros(n,n,N)
-    dV  = [0., 0.]
+    k          = zeros(m,N)
+    K          = zeros(m,n,N)
+    Vx         = zeros(n,N)
+    Vxx        = zeros(n,n,N)
+    Quu        = Array{T}(m,m,N)
+    Quui       = Array{T}(m,m,N)
+    dV         = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,end]
-    Quu        = Array{T}(m,m,N)
+    Quu[:,:,N] = cuu
+    updateQuui && (Quui[:,:,N] = inv(Quu[:,:,N]))
     diverge    = 0
 
     for i = N-1:-1:1
@@ -212,14 +219,14 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
         Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
         Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-
+        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
+    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u) # cost quadratic and cost and LTI dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u,updateQuui=false) # cost quadratic and cost and LTI dynamics
 
     m,N = size(u)
     n   = size(fx,1)
@@ -233,10 +240,13 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
     Vx  = zeros(n,N)
     Vxx = zeros(n,n,N)
     Quu = Array{T}(m,m,N)
+    Quui = Array{T}(m,m,N)
     dV  = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx
+    Quu[:,:,N] = cuu
+    updateQuui && (Quui[:,:,N] = inv(Quu[:,:,N]))
 
     diverge    = 0
     for i = N-1:-1:1
@@ -248,11 +258,11 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
         Vxx_reg    = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
         Qux_reg    = cxu' + fu'Vxx_reg*fx
         QuuF       = cuu + fu'Vxx_reg*fu + (regType == 1 ? λ*eye(m) : 0)
-
+        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         @end_backward_pass
     end
 
-    return diverge, GaussianDist(N,n,m,K,EmptyMat3,Quu,x,k), Vx, Vxx,dV
+    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
 

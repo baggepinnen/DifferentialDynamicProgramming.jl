@@ -12,6 +12,8 @@ end
 end
 
 
+
+
 function demo_linear(;kwargs...)
     println("Running linear demo function for DifferentialDynamicProgramming.jl")
 
@@ -42,7 +44,6 @@ function demo_linear(;kwargs...)
     cxx = Q
     cxu = zeros(size(B))
     cuu = R
-
     function lin_dyn_df(x,u,Q,R)
         u[isnan.(u)] = 0
         cx  = Q*x
@@ -56,12 +57,7 @@ function demo_linear(;kwargs...)
         c = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
         return xnew,c
     end
-
-    function lin_dyn_fT(x,Q)
-        c = 0.5*sum(x.*(Q*x))
-        return c
-    end
-
+    lin_dyn_fT(x,Q) = 0.5*sum(x.*(Q*x))
     f(x,u,i)   = lin_dyn_f(x,u,A,B,Q,R)
     fT(x)      = lin_dyn_fT(x,Q)
     df(x,u)  = lin_dyn_df(x,u,Q,R)
@@ -77,4 +73,72 @@ function demo_linear(;kwargs...)
 
     plotstuff_linear(x,u,cost,totalcost)
     x, u, traj_new, Vx, Vxx, cost, otrace
+end
+
+
+function demo_linear_kl(;kwargs...)
+    println("Running linear demo function with KL-divergence constraint for DifferentialDynamicProgramming.jl")
+
+    # make stable linear dynamics
+    h = .01         # time step
+    n = 10          # state dimension
+    m = 2           # control dimension
+    A = randn(n,n)
+    A = A-A'        # skew-symmetric = pure imaginary eigenvalues
+    A = expm(h*A)   # discrete time
+    B = h*randn(n,m)
+
+    # quadratic costs
+    Q = h*eye(n)
+    R = .1*h*eye(m)
+
+    # control limits
+    lims = [] #ones(m,1)*[-1 1]*.6
+
+    T        = 1000              # horizon
+    x       = ones(n)        # initial state
+    u       = .1*randn(m,T)     # initial controls
+
+
+    # optimization problem
+    N   = T+1
+    fx  = A
+    fu  = B
+    cxx = Q
+    cxu = zeros(size(B))
+    cuu = R
+    function lin_dyn_df(x,u,Q,R)
+        u[isnan.(u)] = 0
+        cx  = Q*x
+        cu  = R*u
+        fxx=fxu=fuu = []
+        return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
+    end
+    function lin_dyn_f(x,u,A,B,Q,R)
+        u[isnan.(u)] = 0
+        xnew = A*x + B*u
+        c = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
+        return xnew,c
+    end
+    lin_dyn_fT(x,Q) = 0.5*sum(x.*(Q*x))
+    f(x,u,i)   = lin_dyn_f(x,u,A,B,Q,R)
+    fT(x)      = lin_dyn_fT(x,Q)
+    df(x,u)  = lin_dyn_df(x,u,Q,R)
+    # plotFn(x)  = plot(squeeze(x,2)')
+    traj = GaussianPolicy(Float64,T,n,m)
+    # run the optimization
+    Vx, Vxx, cost, otrace = 0,0,0,0
+    @time for iter = 1:5
+        cost0 = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
+        x, u, traj, Vx, Vxx, cost, otrace = iLQGkl(f,fT,df, x, u, traj; cost=cost0, lims=lims,kwargs...);
+        totalcost = [ t.cost for t in otrace]
+        iters = sum(totalcost .> 0)
+        totalcost = [ otrace[i].cost for i=1:iters]
+        println("Outer loop: Cost = ", sum(cost))
+    end
+
+
+
+    plotstuff_linear(x,u,cost,totalcost)
+    x, u, traj, Vx, Vxx, cost, otrace
 end

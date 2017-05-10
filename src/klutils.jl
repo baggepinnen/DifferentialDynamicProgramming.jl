@@ -7,25 +7,21 @@ This Function should be called from within the backwards_pass Function or just p
 """
 function dkl(traj_new)
     isempty(traj_new) && (return (0,0,0,0,0))
+    debug("Calculating KL cost addition terms")
     m,n,T  = traj_new.m,traj_new.n,traj_new.T
     cx,cu,cxx,cuu,cxu = zeros(n,T),zeros(m,T),zeros(n,n,T),zeros(m,m,T),zeros(n,m,T)
     for t in 1:T
-        K, k       = traj_new.fx[:,:,t], traj_new.μu[:,t]
-        Σi         = traj_new.Σ[:,:,t]#inv(traj_new.Σ[:,:,t] + 1e-5*I) # TODO: the value that is save is actually Quu, which itself is inverse of policy covariance
-        cx[:,t],cu[:,t],cxx[:,:,t],cuu[:,:,t],cxu[:,:,t]  = dkli(Σi,K,k)
+        K, k       = traj_new.K[:,:,t], traj_new.k[:,t]
+        Σi         = traj_new.Σi[:,:,t]
+        cx[:,t]    = K'*Σi*k
+        cu[:,t]    = -Σi*k
+        cxx[:,:,t] = K'*Σi*K
+        cuu[:,:,t] = Σi
+        cxu[:,:,t] = -K'Σi#TODO: maybe -Σi*K? Does fuck up array dims later, https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L355
     end
-    return cx,cu,cxx,cuu,cxu
+    return cx,cu,cxx,cxu,cuu
 end
 
-
-function dkli(Σi,K,k)
-    cx  = K'*Σi*k
-    cu  = -Σi*k
-    cxx = K'*Σi*K
-    cuu = Σi #TODO: defenetely + sign here?
-    cxu = -K'Σi #TODO: maybe -Σi*K? Does fuck up array dims later, https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L355
-    cx,cu,cxx,cuu,cxu
-end
 
 function KLmv(Σi,K,k)
     M =
@@ -43,7 +39,7 @@ distributions.
 μ_new: (n+m)×T, mean of new trajectory distribution (xnew, unew).
 Σ_new: n×n×T , variance of new trajectory distribution.
 """
-function kl_div(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDist)
+function kl_div(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::GaussianPolicy)
     (isempty(new_traj) || isempty(prev_traj)) && (return 0)
     μ_new = [xnew; unew]
     T     = new_traj.T
@@ -52,14 +48,14 @@ function kl_div(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDi
     for t = 1:T
         μt    = μ_new[:,t]
         Σt    = Σ_new[:,:,t]
-        Kp    = prev_traj.fx[:,:,t]
-        Kn    = new_traj.fx[:,:,t]
-        kp    = prev_traj.μu[:,t]
-        kn    = new_traj.μu[:,t]
+        Kp    = prev_traj.K[:,:,t]
+        Kn    = new_traj.K[:,:,t]
+        kp    = prev_traj.k[:,t]
+        kn    = new_traj.k[:,t]
         Σp    = prev_traj.Σ[:,:,t]
         Σn    = new_traj.Σ[:,:,t]
-        Σip   = inv(Σp + 1e-5*I) # TODO: I added some regularization here, should maybe be a hyper parameter?
-        Σin   = inv(Σn + 1e-5*I)
+        Σip   = prev_traj.Σi[:,:,t]
+        Σin   = new_traj.Σi[:,:,t]
         Mp,vp = KLmv(Σip,Kp,kp)
         Mn,vn = KLmv(Σin,Kn,kn)
         cp    = prev_traj.dV[2]
@@ -72,30 +68,30 @@ function kl_div(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDi
 end
 
 
-function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianDist, prev_traj::GaussianDist)
+function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::GaussianPolicy)
     μ_new = xnew# [xnew; unew] verkar inte som att unew behövs??
     T,m     = new_traj.T, new_traj.m
     kldiv = zeros(T)
     for t = 1:T
         μt     = μ_new[:,t]
         Σt     = Σ_new[:,:,t]
-        Kp     = prev_traj.fx[:,:,t]
-        Kn     = new_traj.fx[:,:,t]
-        kp     = prev_traj.μu[:,t]
-        kn     = new_traj.μu[:,t]
-        Σp    = prev_traj.Σ[:,:,t]# TODO: the value that is save is actually Quu, which itself is inverse of policy covariance
+        Kp     = prev_traj.K[:,:,t]
+        Kn     = new_traj.K[:,:,t]
+        kp     = prev_traj.k[:,t]
+        kn     = new_traj.k[:,t]
+        Σp    = prev_traj.Σ[:,:,t]
         Σn    = new_traj.Σ[:,:,t]
-        Σip     = inv(Σp + 1e-15*I) # TODO: I added some regularization here, should maybe be a hyper parameter?
-        Σin     = inv(Σn + 1e-15*I)
+        Σip   = prev_traj.Σi[:,:,t]
+        Σin   = new_traj.Σi[:,:,t]
         dim    = size(Σip,1)
         k_diff = kp-kn
         K_diff = Kp-Kn
         try
-            kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff⋅(Σip*k_diff) - dim + logdet(Σip) - logdet(Σin) )
+            kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff⋅(Σip*k_diff) - dim + logdet(Σp) - logdet(Σn) )
             kldiv[t] +=  ( μt'K_diff'Σip*K_diff*μt + 1/2 *trace(K_diff'Σip*K_diff*Σt) )[1]
         catch e
             println(e)
-            @show Σip, Σin
+            @show Σip, Σin, Σp, Σn
             error("quitting")
         end
     end
@@ -113,30 +109,29 @@ end
 new_η, satisfied, divergence = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
 This Function caluculates the step size
 """
-function calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
+function calc_η(xnew,unew,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
     kl_step > 0 || (return (1., true,0))
-    min_η  = 1e-5#1e-5 # TODO: these should be hyperparameters
-    max_η  = 1e16#1e16 # TODO: these should be hyperparameters
+
     divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev)
     constraint_violation    = divergence - kl_step
     # Convergence check - constraint satisfaction.
-    satisfied = (constraint_violation) < 0.1*kl_step # allow some small constraint violation # TODO: Why the absolute value on constraint_violation?
-    satisfied && debug(@sprintf("KL: %12.7f / %12.7f, converged",  divergence, kl_step))
-
-    if constraint_violation < 0 # η was too big.
-        max_η = η
-        geom = √(min_η*max_η)  # Geometric mean.
-        new_η = max(geom, 0.1*max_η)
-        debug(@sprintf("KL: %12.7f / %12.7f, η too big, new η: %12.7f",  divergence, kl_step, new_η))
-    else # η was too small.
-        min_η = η
-        geom = √(min_η*max_η)  # Geometric mean.
-        new_η = min(geom, 10.0*min_η)
-        debug(@sprintf("KL: %12.7f / %12.7f, η too small, new η: %12.7f",  divergence, kl_step, new_η))
+    satisfied = abs(constraint_violation) < 0.1*kl_step # allow some small constraint violation
+    if satisfied
+        debug(@sprintf("KL: %12.7f / %12.7f, converged",  divergence, kl_step))
+    else
+        if constraint_violation < 0 # η was too big.
+            ηbracket[3] = ηbracket[2]
+            ηbracket[2] = max(geom(ηbracket), 0.1*ηbracket[3])
+            debug(@sprintf("KL: %12.7f / %12.7f, η too big, new η: (%-5.3g < %-5.3g < %-5.3g)",  divergence, kl_step, ηbracket...))
+        else # η was too small.
+            ηbracket[1] = ηbracket[2]
+            ηbracket[2] = min(geom(ηbracket), 10.0*ηbracket[1])
+            debug(@sprintf("KL: %12.7f / %12.7f, η too small, new η: (%-5.3g < %-5.3g < %-5.3g)",  divergence, kl_step, ηbracket...))
+        end
     end
-    return new_η, satisfied, divergence
+    return ηbracket, satisfied, divergence
 end
-
+geom(ηbracket) = √(ηbracket[1]*ηbracket[3])
 
 # using Base.Test
 # n,m,T = 1,1,1
