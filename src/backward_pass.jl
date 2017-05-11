@@ -2,25 +2,29 @@ vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
 macro setupQTIC()
     quote
-        m   = size(u,1)
-        n,N = size(fx,1,3)
+        m          = size(u,1)
+        n,N        = size(fx,1,3)
 
-        cx  = reshape(cx, (n, N))
-        cu  = reshape(cu, (m, N))
-        cxx = reshape(cxx, (n, n))
-        cxu = reshape(cxu, (n, m))
-        cuu = reshape(cuu, (m, m))
+        cx         = reshape(cx, (n, N))
+        cu         = reshape(cu, (m, N))
+        cxx        = reshape(cxx, (n, n))
+        cxu        = reshape(cxu, (n, m))
+        cuu        = reshape(cuu, (m, m))
 
-        k   = zeros(m,N)
-        K   = zeros(m,n,N)
-        Vx  = zeros(n,N)
-        Vxx = zeros(n,n,N)
-        dV  = [0., 0.]
+        k          = zeros(m,N)
+        K          = zeros(m,n,N)
+        Vx         = zeros(n,N)
+        Vxx        = zeros(n,n,N)
+        Quu        = Array{T}(m,m,N)
+        Quui       = Array{T}(m,m,N)
+        dV         = [0., 0.]
 
         Vx[:,N]    = cx[:,N]
         Vxx[:,:,N] = cxx
-        Quu        = Array{T}(m,m,N)
-        Quui        = Array{T}(m,m,N)
+        Quu[:,:,N] = cuu
+        if updateQuui
+            Quui[:,:,N] = inv(Quu[:,:,N])
+        end
         diverge    = 0
     end |> esc
 end
@@ -92,7 +96,9 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,N]
     Quu[:,:,N] = cuu
-    updateQuui && (Quui[:,:,N] = inv(Quu[:,:,N]))
+    if updateQuui
+        Quui[:,:,N] = inv(Quu[:,:,N])
+    end
 
     diverge  = 0
     for i = N-1:-1:1
@@ -207,7 +213,9 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,end]
     Quu[:,:,N] = cuu
-    updateQuui && (Quui[:,:,N] = inv(Quu[:,:,N]))
+    if updateQuui
+        Quui[:,:,N] = inv(Quu[:,:,N])
+    end
     diverge    = 0
 
     for i = N-1:-1:1
@@ -246,7 +254,9 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx
     Quu[:,:,N] = cuu
-    updateQuui && (Quui[:,:,N] = inv(Quu[:,:,N]))
+    if updateQuui
+        Quui[:,:,N] = inv(Quu[:,:,N])
+    end
 
     diverge    = 0
     for i = N-1:-1:1

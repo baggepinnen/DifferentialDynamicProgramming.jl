@@ -356,7 +356,7 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
     for i = 1:N
         if !isempty(traj_new)
             unew[:,i] .+= traj_new.k[:,i]*alpha
-            dx = diff(xnew[:,i], x[:,i])
+            dx = diff(xnew[:,i], x[:,i]) # TODO: verify if this is still reasonable
             unew[:,i] .+= traj_new.K[:,:,i]*dx
         end
         if !isempty(lims)

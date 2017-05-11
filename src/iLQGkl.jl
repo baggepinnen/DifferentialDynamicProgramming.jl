@@ -94,13 +94,14 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
 
         back_pass_done = false
+        del = 1
+        cxkl,cukl,cxxkl,cxukl,cuukl = dkl(traj_prev)
+        if ndims(cxx) == 2 && size(cxxkl) != () # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
+            cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
+        end
         while !back_pass_done
             tic()
 
-            cxkl,cukl,cxxkl,cxukl,cuukl = dkl(traj_new)
-            if ndims(cxx) == 2 && size(cxxkl) != () # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
-                cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
-            end
             # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
             # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
             η = ηbracket[2]
@@ -114,12 +115,14 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             trace[iter].time_backward = toq()
 
             if diverge > 0
-                ηbracket[2] *= 2 # TODO: modify η here
-                verbosity > 2 && @printf("Cholesky failed at timestep %d. η-bracket: %-12.3g\n",diverge, ηbracket)
+                ηbracket[2] += del # TODO: modify η here
+                del *= 2
+                if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", ηbracket); end
                 if ηbracket[2] >  0.99ηbracket[3] #  terminate ?
                     verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
                     break
                 end
+                continue
             end
             back_pass_done = true
         end
@@ -132,12 +135,11 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             break
         end
 
-        # ====== STEP 3: line-search to find new control sequence, trajectory, cost
+        # ====== STEP 3: Forward pass
         if back_pass_done
             tic()
             xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
             # debug("#  entering forward_pass")
-            # for alphai = alpha # TODO: Maybe this linesearch is replaced by the search for η?
             alphai = 1
             xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
             Δcost    = sum(cost) - sum(costnew)
@@ -150,8 +152,6 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
                 sign(Δcost)
             end
             ηbracket, satisfied, divergence = calc_η(xnew,unew,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
-            if satisfied; break;end
-            # end
             trace[iter].time_forward = toq()
         end
 
@@ -168,16 +168,18 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             last_head += 1
         end
 
-        if satisfied # TODO: I added satisfied here, verify if this is reasonable
-            #  accept changes
+        if satisfied
             plot_fun(x)
-
             verbosity > 0 &&  @printf("\nSUCCESS: abs(KL-divergence) < kl_step\n")
             break
 
         else #  no cost improvement
             alphai =  NaN
             push!(trace, Trace())
+        end
+        if ηbracket[2] >  0.99ηbracket[3] #  terminate ?
+            verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
+            break
         end
         #  update trace
         trace[iter].λ            = λ
@@ -193,7 +195,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
 
     iter ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
     x,u,cost  = xnew,unew,costnew
-    traj_new.k = copy(u) # TODO: maybe only accept changes if kl satisfied?
+    traj_new.k = copy(u) # TODO: is this a good idea? maybe only accept changes if kl satisfied?
 
     divergence > kl_step && abs(divergence - kl_step) > 0.1*kl_step && warn("KL divergence too high when done")
     verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,ηbracket[2])

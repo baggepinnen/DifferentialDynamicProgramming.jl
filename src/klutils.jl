@@ -32,13 +32,6 @@ function KLmv(Σi,K,k)
     M,v
 end
 
-"""
-Compute KL divergence between new and previous trajectory
-distributions.
-
-μ_new: (n+m)×T, mean of new trajectory distribution (xnew, unew).
-Σ_new: n×n×T , variance of new trajectory distribution.
-"""
 function kl_div(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::GaussianPolicy)
     (isempty(new_traj) || isempty(prev_traj)) && (return 0)
     μ_new = [xnew; unew]
@@ -83,16 +76,17 @@ function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::Gau
         Σn     = new_traj.Σ[:,:,t]
         Σip    = prev_traj.Σi[:,:,t]
         Σin    = new_traj.Σi[:,:,t]
-        dim    = size(Σip,1)
+        dim    = m
         k_diff = kp-kn
         K_diff = Kp-Kn
         try
             kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff⋅(Σip*k_diff) - dim + logdet(Σp) - logdet(Σn) )
-            kldiv[t] +=  ( μt'K_diff'Σip*K_diff*μt + 1/2 *trace(K_diff'Σip*K_diff*Σt) )[1]
+            kldiv[t] +=  1/2 *( μt'K_diff'Σip*K_diff*μt + trace(K_diff'Σip*K_diff*Σt) )[1]
+            kldiv[t] += k_diff ⋅ (Σip*K_diff*μt)
         catch e
             println(e)
             @show Σip, Σin, Σp, Σn
-            error("Quitting :(")
+            return Inf
         end
     end
     kldiv = max.(0,kldiv)
