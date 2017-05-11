@@ -346,7 +346,6 @@ function iLQG(f,fT,df, x0, u0;
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
 
-# TODO: u,x ska inte behövas här, de finns i traj_new
 function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
     n         = size(x0,1)
     m,N       = size(u)
@@ -354,12 +353,9 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
     xnew[:,1] = x0
     unew      = copy(u)
     cnew      = zeros(N)
-    debug("Entering forward_pass loop")
     for i = 1:N
         if !isempty(traj_new)
             unew[:,i] .+= traj_new.k[:,i]*alpha
-        end
-        if !isempty(traj_new.K)
             dx = diff(xnew[:,i], x[:,i])
             unew[:,i] .+= traj_new.K[:,:,i]*dx
         end

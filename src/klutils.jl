@@ -79,10 +79,10 @@ function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::Gau
         Kn     = new_traj.K[:,:,t]
         kp     = prev_traj.k[:,t]
         kn     = new_traj.k[:,t]
-        Σp    = prev_traj.Σ[:,:,t]
-        Σn    = new_traj.Σ[:,:,t]
-        Σip   = prev_traj.Σi[:,:,t]
-        Σin   = new_traj.Σi[:,:,t]
+        Σp     = prev_traj.Σ[:,:,t]
+        Σn     = new_traj.Σ[:,:,t]
+        Σip    = prev_traj.Σi[:,:,t]
+        Σin    = new_traj.Σi[:,:,t]
         dim    = size(Σip,1)
         k_diff = kp-kn
         K_diff = Kp-Kn
@@ -92,16 +92,15 @@ function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::Gau
         catch e
             println(e)
             @show Σip, Σin, Σp, Σn
-            error("quitting")
+            error("Quitting :(")
         end
     end
-    kldiv = max.(0,kldiv) # TODO: change to negative, seem to have a sign error
-    return sum(kldiv)
+    kldiv = max.(0,kldiv)
+    return mean(kldiv)
 end
 
 
-# sum(diag(K_diff'inv_prev'K_diff'sigma)) +
-# 2 * k_diff'inv_prev'K_diff'mu
+entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t]) for t = 1:traj.T)
 # TODO: Calculate Σ in the forwards pass, requires covariance of forward dynamics model. Is this is given by the Pkn matrix from the Kalman model?
 
 
@@ -122,11 +121,11 @@ function calc_η(xnew,unew,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
         if constraint_violation < 0 # η was too big.
             ηbracket[3] = ηbracket[2]
             ηbracket[2] = max(geom(ηbracket), 0.1*ηbracket[3])
-            debug(@sprintf("KL: %12.7f / %12.7f, η too big, new η: (%-5.3g < %-5.3g < %-5.3g)",  divergence, kl_step, ηbracket...))
+            debug(@sprintf("KL: %12.4f / %12.4f, η too big, new η: (%-5.3g < %-5.3g < %-5.3g)",  divergence, kl_step, ηbracket...))
         else # η was too small.
             ηbracket[1] = ηbracket[2]
             ηbracket[2] = min(geom(ηbracket), 10.0*ηbracket[1])
-            debug(@sprintf("KL: %12.7f / %12.7f, η too small, new η: (%-5.3g < %-5.3g < %-5.3g)",  divergence, kl_step, ηbracket...))
+            debug(@sprintf("KL: %12.4f / %12.4f, η too small, new η: (%-5.3g < %-5.3g < %-5.3g)",  divergence, kl_step, ηbracket...))
         end
     end
     return ηbracket, satisfied, divergence

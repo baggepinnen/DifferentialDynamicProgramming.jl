@@ -1,6 +1,6 @@
 module DifferentialDynamicProgramming
 using Requires
-const DEBUG = true # Set this flag to true in order to print debug messages
+const DEBUG = false # Set this flag to true in order to print debug messages
 # package code goes here
 
 export QPTrace, boxQP, demoQP, Trace, iLQG,iLQGkl, demo_linear, demo_linear_kl

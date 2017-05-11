@@ -28,7 +28,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     u   = u0                   # initial control sequence
     traj_new  = GaussianPolicy(Float64)
 
-    kl_step *= N # constrain per step not yet supported
+    # kl_step *= N # constrain per step not yet supported, changed to mean in kl_div
     # --- initialize trace data structure
     trace = [Trace() for i in 1:min( max_iter+1,1e6)]
     trace[1].iter,trace[1].λ,trace[1].dλ = 1,λ,dλ
@@ -70,6 +70,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     Δcost              = 0.
     expected_reduction = 0.
     divergence         = 0.
+    step_mult          = 1.
     print_head         = 10 # print headings every print_head lines
     last_head          = print_head
     g_norm             = Vector{Float64}()
@@ -104,13 +105,12 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
             η = ηbracket[2]
             cxi,cui,cxxi,cxui,cuui = cx./η.+cxkl, cu./η.+cukl, cxx./η.+cxxkl, cxu./η.+cxukl, cuu./η.+cuukl
-            debug("Entering back_pass with η=$ηbracket")
+            # debug("Entering back_pass with η=$ηbracket")
             diverge, traj_new,Vx, Vxx,dV = if linearsys
                 back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,0, regType, lims,x,u,true) # Set λ=0 since we use η
             else
                 back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true) # Set λ=0 since we use η
             end
-            warn("It seems modifying η has very little effect on the KL-div. Investigate this")
             trace[iter].time_backward = toq()
 
             if diverge > 0
@@ -136,13 +136,13 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         if back_pass_done
             tic()
             xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
-            debug("#  entering forward_pass")
+            # debug("#  entering forward_pass")
             # for alphai = alpha # TODO: Maybe this linesearch is replaced by the search for η?
             alphai = 1
             xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
             Δcost    = sum(cost) - sum(costnew)
             expected_reduction = -alphai*(dV[1] + alphai*dV[2])
-            # expected_reduction /= ηbracket[2] # TODO: This should not be needed since dV is affected by Quu
+
             reduce_ratio = if expected_reduction > 0
                 Δcost/expected_reduction
             else
@@ -161,10 +161,10 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         if verbosity > 1
             if last_head == print_head
                 last_head = 0
-                @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(λ)    η    divergence\n")
+                @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(λ)    log10(η)    divergence      entropy\n")
             end
-            @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f%-12.3g%-12.3g\n",
-            iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ), η, divergence)
+            @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f%-12.1f%-12.3g%-12.3g\n",
+            iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ), log10(η), divergence, entropy(traj_new))
             last_head += 1
         end
 
@@ -196,7 +196,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     traj_new.k = copy(u) # TODO: maybe only accept changes if kl satisfied?
 
     divergence > kl_step && abs(divergence - kl_step) > 0.1*kl_step && warn("KL divergence too high when done")
-    verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,λ)
+    verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,ηbracket[2])
 
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
