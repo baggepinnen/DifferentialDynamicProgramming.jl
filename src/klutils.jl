@@ -57,16 +57,16 @@ function kl_div(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::Gaussian
         kldiv[t] = -0.5μt'(Mn-Mp)*μt -  μt'(vn-vp) - cn + cp -0.5sum(Σt*(Mn-Mp)) -0.5logdet(Σn) + 0.5logdet(Σp)
         kldiv[t] = max(0,kldiv[t])
     end
-    return sum(kldiv)
+    return kldiv
 end
 
 
-function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::GaussianPolicy)
-    μ_new = xnew# [xnew; unew] verkar inte som att unew behövs??
+function kl_div_wiki(xnew,xold, Σ_new, new_traj::GaussianPolicy, prev_traj::GaussianPolicy)
+    μ_new = xnew-xold# [xnew; unew] verkar inte som att unew behövs??
     T,m     = new_traj.T, new_traj.m
     kldiv = zeros(T)
     for t = 1:T
-        μt     = μ_new[:,t]
+        μt     = μ_new[:,t] # TODO: why is traj mean not compared to old traj mean?
         Σt     = Σ_new[:,:,t]
         Kp     = prev_traj.K[:,:,t]
         Kn     = new_traj.K[:,:,t]
@@ -90,23 +90,23 @@ function kl_div_wiki(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::Gau
         end
     end
     kldiv = max.(0,kldiv)
-    return mean(kldiv)
+    return kldiv
 end
 
 
-entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t]) for t = 1:traj.T)
+entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t])/2 for t = 1:traj.T) + traj.m*log(2π*e)/2
 # TODO: Calculate Σ in the forwards pass, requires covariance of forward dynamics model. Is this is given by the Pkn matrix from the Kalman model?
 
 
 """
-new_η, satisfied, divergence = calc_η(xnew,unew,sigmanew,η, traj_new, traj_prev, kl_step)
+new_η, satisfied, divergence = calc_η(xnew,xold,sigmanew,η, traj_new, traj_prev, kl_step)
 This Function caluculates the step size
 """
-function calc_η(xnew,unew,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
+function calc_η(xnew,xold,sigmanew,ηbracket, traj_new, traj_prev, kl_step::Number)
     kl_step > 0 || (return (1., true,0))
 
-    divergence    = kl_div_wiki(xnew,unew,sigmanew, traj_new, traj_prev)
-    constraint_violation    = divergence - kl_step
+    divergence    = kl_div_wiki(xnew,xold,sigmanew, traj_new, traj_prev) |> mean
+    constraint_violation = divergence - kl_step
     # Convergence check - constraint satisfaction.
     satisfied = abs(constraint_violation) < 0.1*kl_step # allow some small constraint violation
     if satisfied
@@ -124,7 +124,32 @@ function calc_η(xnew,unew,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
     end
     return ηbracket, satisfied, divergence
 end
-geom(ηbracket) = √(ηbracket[1]*ηbracket[3])
+
+function calc_η(xnew,xold,sigmanew,ηbracket, traj_new, traj_prev, kl_step::AbstractVector)
+    any(kl_step .> 0) || (return (1., true,0))
+
+    divergence    = kl_div_wiki(xnew,xold,sigmanew, traj_new, traj_prev)
+    if !isa(kl_step,AbstractVector)
+        divergence = mean(divergence)
+    end
+    constraint_violation = divergence - kl_step
+    # Convergence check - constraint satisfaction.
+    satisfied = all(abs.(constraint_violation) .< 0.1*kl_step) # allow some small constraint violation
+    if satisfied
+        debug(@sprintf("KL: %12.7f / %12.7f, converged",  mean(divergence), mean(kl_step)))
+    else
+        too_big = constraint_violation .< 0
+
+        ηbracket[3,too_big] = ηbracket[2,too_big]
+        ηbracket[2,too_big] = max.(geom(ηbracket[:,too_big]), 0.1*ηbracket[3,too_big])
+
+        ηbracket[1,!too_big] = ηbracket[2,!too_big]
+        ηbracket[2,!too_big] = min.(geom(ηbracket[:,!too_big]), 10.0*ηbracket[1,!too_big])
+    end
+    return ηbracket, satisfied, divergence
+end
+geom(ηbracket::AbstractMatrix) = sqrt.(ηbracket[1,:].*ηbracket[3,:])
+geom(ηbracket::AbstractVector) = sqrt(ηbracket[1]*ηbracket[3])
 
 # using Base.Test
 # n,m,T = 1,1,1

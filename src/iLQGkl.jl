@@ -1,23 +1,23 @@
 function iLQGkl(f,fT,df, x0, u0, traj_prev;
-    lims             = [],
-    alpha            = logspace(0,-3,11),
-    tol_fun          = 1e-7,
-    tol_grad         = 1e-4,
-    max_iter         = 500,
-    λ                = 1,
-    dλ               = 1,
-    λfactor          = 1.6,
-    λmax             = 1e10,
-    λmin             = 1e-6,
-    regType          = 1,
-    reduce_ratio_min = 0,
-    diff_fun         = -,
-    plot             = 1,
-    verbosity        = 2,
-    plot_fun         = x->0,
-    cost             = [],
-    kl_step          = 0,
-    ηbracket         = [1e-8,1,1e16] # min_η, η, max_η
+    lims               = [],
+    alpha              = logspace(0,-3,11),
+    tol_fun            = 1e-7,
+    tol_grad           = 1e-4,
+    max_iter           = 500,
+    λ                  = 1,
+    dλ                 = 1,
+    λfactor            = 1.6,
+    λmax               = 1e10,
+    λmin               = 1e-6,
+    regType            = 1,
+    reduce_ratio_min   = 0,
+    diff_fun           = -,
+    verbosity          = 2,
+    plot_fun           = x->0,
+    cost               = [],
+    kl_step            = 0,
+    ηbracket           = [1e-8,1,1e16], # min_η, η, max_η
+    constrain_per_step = false
     )
     debug("Entering iLQG")
 
@@ -27,6 +27,11 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     N   = size(u0, 2)          # number of state transitions
     u   = u0                   # initial control sequence
     traj_new  = GaussianPolicy(Float64)
+    traj_prev.k *= 0 # We are adding new k to u, so must set this to zero for correct kl calculations
+    if constrain_per_step
+        ηbracket = ηbracket.*ones(1,N)
+        kl_step = kl_step*ones(N)
+    end
 
     # kl_step *= N # constrain per step not yet supported, changed to mean in kl_div
     # --- initialize trace data structure
@@ -96,16 +101,25 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         back_pass_done = false
         del = 1
         cxkl,cukl,cxxkl,cxukl,cuukl = dkl(traj_prev)
-        if ndims(cxx) == 2 && size(cxxkl) != () # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
+        chopdims = ndims(cxx) == 2 && size(cxxkl) != () && !constrain_per_step
+        if chopdims # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
             cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
         end
         while !back_pass_done
             tic()
-
             # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
             # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
-            η = ηbracket[2]
-            cxi,cui,cxxi,cxui,cuui = cx./η.+cxkl, cu./η.+cukl, cxx./η.+cxxkl, cxu./η.+cxukl, cuu./η.+cuukl
+            if constrain_per_step
+                η    = ηbracket[2,:]
+                cxi  = cx ./η' .+ cxkl
+                cui  = cu ./η' .+ cukl
+                cxxi = cxx./reshape(η,1,1,N) .+ cxxkl
+                cxui = cxu./reshape(η,1,1,N) .+ cxukl
+                cuui = cuu./reshape(η,1,1,N) .+ cuukl
+            else
+                η = ηbracket[2]
+                cxi,cui,cxxi,cxui,cuui = cx./η.+cxkl, cu./η.+cukl, cxx./η.+cxxkl, cxu./η.+cxukl, cuu./η.+cuukl
+            end
             # debug("Entering back_pass with η=$ηbracket")
             diverge, traj_new,Vx, Vxx,dV = if linearsys
                 back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,0, regType, lims,x,u,true) # Set λ=0 since we use η
@@ -115,10 +129,10 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             trace[iter].time_backward = toq()
 
             if diverge > 0
-                ηbracket[2] += del # TODO: modify η here
+                ηbracket[2,:] .+= del # TODO: modify η here
                 del *= 2
                 if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", ηbracket); end
-                if ηbracket[2] >  0.99ηbracket[3] #  terminate ?
+                if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
                     verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
                     break
                 end
@@ -142,6 +156,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             # debug("#  entering forward_pass")
             alphai = 1
             xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
+
             Δcost    = sum(cost) - sum(costnew)
             expected_reduction = -alphai*(dV[1] + alphai*dV[2])
 
@@ -151,7 +166,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
                 warn("negative expected reduction: should not occur")
                 sign(Δcost)
             end
-            ηbracket, satisfied, divergence = calc_η(xnew,unew,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
+            ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
             trace[iter].time_forward = toq()
         end
 
@@ -164,7 +179,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
                 @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(λ)    log10(η)    divergence      entropy\n")
             end
             @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f%-12.1f%-12.3g%-12.3g\n",
-            iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ), log10(η), divergence, entropy(traj_new))
+            iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ), log10(mean(η)), mean(divergence), entropy(traj_new))
             last_head += 1
         end
 
@@ -177,7 +192,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             alphai =  NaN
             push!(trace, Trace())
         end
-        if ηbracket[2] >  0.99ηbracket[3] #  terminate ?
+        if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
             verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
             break
         end
@@ -186,19 +201,19 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         trace[iter].dλ           = dλ
         trace[iter].alpha        = alphai
         trace[iter].improvement  = Δcost
-        trace[iter].cost         = sum(cost)
+        trace[iter].cost         = sum(costnew)
         trace[iter].reduce_ratio = reduce_ratio
-        trace[iter].divergence   = divergence
-        trace[iter].η            = η
-        graphics( plot,x,u,cost,K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
+        trace[iter].divergence   = mean(divergence)
+        trace[iter].η            = mean(η)
+        graphics(x,u,cost,K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
     end
 
     iter ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
     x,u,cost  = xnew,unew,costnew
     traj_new.k = copy(u) # TODO: is this a good idea? maybe only accept changes if kl satisfied?
 
-    divergence > kl_step && abs(divergence - kl_step) > 0.1*kl_step && warn("KL divergence too high when done")
-    verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,ηbracket[2])
+    any((divergence .> kl_step) .& (abs.(divergence - kl_step) .> 0.1*kl_step)) && warn("KL divergence too high when done")
+    verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,mean(ηbracket[2,:]))
 
     return x, u, traj_new, Vx, Vxx, cost, trace
 end

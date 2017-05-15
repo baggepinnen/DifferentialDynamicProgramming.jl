@@ -95,7 +95,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     dV         = [0., 0.]
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,N]
-    Quu[:,:,N] = cuu
+    Quu[:,:,N] = cuu[:,:,N]
     if updateQuui
         Quui[:,:,N] = inv(Quu[:,:,N])
     end
@@ -212,7 +212,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
 
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,end]
-    Quu[:,:,N] = cuu
+    Quu[:,:,N] = cuu[:,:,N]
     if updateQuui
         Quui[:,:,N] = inv(Quu[:,:,N])
     end

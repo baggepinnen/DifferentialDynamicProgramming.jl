@@ -4,9 +4,9 @@ const DEBUG = false # Set this flag to true in order to print debug messages
 # package code goes here
 
 export QPTrace, boxQP, demoQP, Trace, iLQG,iLQGkl, demo_linear, demo_linear_kl, GaussianPolicy
-export AbstractModel, AbstractCost, ModelAndCost, @define_modelcost_functions, cost, cost_final, dc, fit_model, predict, df
 
-include("interfaces.jl")
+
+# include("interfaces.jl")
 include("boxQP.jl")
 include("iLQG.jl")
 include("iLQGkl.jl")
