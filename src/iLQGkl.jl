@@ -101,31 +101,16 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
 
         back_pass_done = false
         del = constrain_per_step ? del0*ones(N) : del0
-        kl_cost_terms = dkl(traj_prev)
-        chopdims = ndims(cxx) == 2 && size(cxxkl) != () && !constrain_per_step
-        if chopdims # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
-            cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
-        end
+        kl_cost_terms = (dkl(traj_prev), ηbracket) # TODO: Magic tuple
         while !back_pass_done
             tic()
             # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
             # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
-            if constrain_per_step
-                η    = view(ηbracket,2,:)
-                cxi  = cx ./η' .+ cxkl
-                cui  = cu ./η' .+ cukl
-                cxxi = cxx./reshape(η,1,1,N) .+ cxxkl
-                cxui = cxu./reshape(η,1,1,N) .+ cxukl
-                cuui = cuu./reshape(η,1,1,N) .+ cuukl
-            else
-                η = ηbracket[2]
-                cxi,cui,cxxi,cxui,cuui = cx./η.+cxkl, cu./η.+cukl, cxx./η.+cxxkl, cxu./η.+cxukl, cuu./η.+cuukl
-            end
             # debug("Entering back_pass with η=$ηbracket")
             diverge, traj_new,Vx, Vxx,dV = if linearsys
-                back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,0, regType, lims,x,u,true) # Set λ=0 since we use η
+                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, regType, lims,x,u,true,kl_cost_terms) # Set λ=0 since we use η
             else
-                back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true) # Set λ=0 since we use η
+                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true,kl_cost_terms) # Set λ=0 since we use η
             end
             trace[iter].time_backward = toq()
 
@@ -173,21 +158,15 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         end
 
         if constrain_per_step # This implements the gradient descent procedure for η
-            optimizer = ADAMOptimizer(kl_step, α=0.1)
+            optimizer = ADAMOptimizer(kl_step, α=0.01)
             for gd_iter = 1:100
                 diverge = 1
                 del = constrain_per_step ? del0*ones(N) : del0
                 while diverge > 0
-                    η    = view(ηbracket,2,:)
-                    cxi  = cx ./η' .+ cxkl
-                    cui  = cu ./η' .+ cukl
-                    cxxi = cxx./reshape(η,1,1,N) .+ cxxkl
-                    cxui = cxu./reshape(η,1,1,N) .+ cxukl
-                    cuui = cuu./reshape(η,1,1,N) .+ cuukl
                     diverge, traj_new,Vx, Vxx,dV = if linearsys
-                        back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,0, regType, lims,x,u,true)
+                        back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, regType, lims,x,u,true,kl_cost_terms)
                     else
-                        back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true)
+                        back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true,kl_cost_terms)
                     end
                     if diverge > 0
                         delind = diverge

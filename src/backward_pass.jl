@@ -31,12 +31,20 @@ end
 
 macro end_backward_pass()
     quote
-        if !isempty(kl_cost_terms)
-            cxkl,cukl,cxxkl,cxukl,cuukl = kl_cost_terms
-            η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,t] : ηbracket[2]
-            Qu = Qu / η + cukl
-            Qux_reg = Qux_reg / η + cxukl
-            QuuF = QuuF / η + cuukl
+        if kl_cost_terms != 0
+            cxkl,cukl,cxxkl,cxukl,cuukl = kl_cost_terms[1]
+            # chopdims = ndims(cxx) == 2 && size(cxxkl) != () && !constrain_per_step
+            # if chopdims # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
+            #     cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
+            # end
+
+            # TODO: fix dimension problem at line 45
+            # TODO: properly broadcast operations below
+            ηbracket = kl_cost_terms[2]
+            η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,i] : ηbracket[2]
+            Qu = Qu / η + cukl[:,i]
+            Qux_reg = Qux_reg / η + cxukl[:,:,i]
+            QuuF = QuuF / η + cuukl[:,:,i]
         end
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
@@ -84,7 +92,7 @@ macro end_backward_pass()
     end |> esc
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false) # nonlinear time variant
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # nonlinear time variant
 
 
 
@@ -150,7 +158,7 @@ end
 # μu::Array{P,2}
 
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false) # quadratic timeinvariant cost, dynamics nonlinear time variant
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # quadratic timeinvariant cost, dynamics nonlinear time variant
 
     @setupQTIC
 
@@ -183,7 +191,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false) # quadratic timeinvariant cost, linear time variant dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # quadratic timeinvariant cost, linear time variant dynamics
     @setupQTIC
     for i = N-1:-1:1
         Qu         = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
@@ -201,7 +209,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false) # quadratic timeVariant cost, linear time variant dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # quadratic timeVariant cost, linear time variant dynamics
     m          = size(u,1)
     n,N        = size(fx,1,3)
 
@@ -243,7 +251,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u,updateQuui=false) # cost quadratic and cost and LTI dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # cost quadratic and cost and LTI dynamics
 
     m,N = size(u)
     n   = size(fx,1)
