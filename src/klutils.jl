@@ -169,3 +169,29 @@ geom(ηbracket::AbstractVector) = sqrt(ηbracket[1]*ηbracket[3])
 #
 # traj_new.Σ .*=2
 # kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
+
+
+mutable struct ADAMOptimizer{T,N}
+    α::T
+    β1::T
+    β2::T
+    ɛ::T
+    m::Array{T,N}
+    v::Array{T,N}
+end
+
+ADAMOptimizer{T,N}(g::AbstractArray{T,N}; α = 0.005,  β1 = 0.9, β2 = 0.999, ɛ = 1e-8, m=zeros(g), v=zeros(g)) = ADAMOptimizer{T,N}(α,  β1, β2, ɛ, m, v)
+
+"""
+    (a::ADAMOptimizer{T,N})(Θ::Array{T,N}, g::Array{T,N}, t::Number)
+
+Applies the gradient `g` to the parameters `Θ` (mutating) at iteration `t`
+ADAM GD update http://sebastianruder.com/optimizing-gradient-descent/index.html#adam
+"""
+function (a::ADAMOptimizer{T,N}){T,N}(Θ::AbstractArray{T,N}, g::AbstractArray{T,N}, t)
+    a.m .= a.β1 .* a.m .+ (1-a.β1) .* g
+    m̂    = a.m ./ (1 - a.β1 ^ t)
+    a.v .= a.β2 .* a.v .+ (1-a.β2) .* g.^2
+    v̂    = a.v ./ (1 - a.β2 ^ t)
+    Θ  .-= a.α .* m̂ ./ (sqrt.(v̂) .+ a.ɛ)
+end

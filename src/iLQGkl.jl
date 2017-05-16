@@ -17,7 +17,8 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     cost               = [],
     kl_step            = 0,
     ηbracket           = [1e-8,1,1e16], # min_η, η, max_η
-    constrain_per_step = false
+    constrain_per_step = false,
+    del0               = 0.0001
     )
     debug("Entering iLQG")
 
@@ -99,8 +100,8 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
 
         back_pass_done = false
-        del = 1
-        cxkl,cukl,cxxkl,cxukl,cuukl = dkl(traj_prev)
+        del = constrain_per_step ? del0*ones(N) : del0
+        kl_cost_terms = dkl(traj_prev)
         chopdims = ndims(cxx) == 2 && size(cxxkl) != () && !constrain_per_step
         if chopdims # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
             cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
@@ -110,7 +111,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
             # @show size(cx),size(cu),size(cxx),size(cuu),size(cxu)
             if constrain_per_step
-                η    = ηbracket[2,:]
+                η    = view(ηbracket,2,:)
                 cxi  = cx ./η' .+ cxkl
                 cui  = cu ./η' .+ cukl
                 cxxi = cxx./reshape(η,1,1,N) .+ cxxkl
@@ -129,8 +130,9 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             trace[iter].time_backward = toq()
 
             if diverge > 0
-                ηbracket[2,:] .+= del # TODO: modify η here
-                del *= 2
+                delind = constrain_per_step ? diverge : 1
+                ηbracket[2,delind] .+= del[delind] # TODO: modify η here
+                del[delind] *= 2
                 if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", ηbracket); end
                 if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
                     verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
@@ -170,6 +172,47 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             trace[iter].time_forward = toq()
         end
 
+        if constrain_per_step # This implements the gradient descent procedure for η
+            optimizer = ADAMOptimizer(kl_step, α=0.1)
+            for gd_iter = 1:100
+                diverge = 1
+                del = constrain_per_step ? del0*ones(N) : del0
+                while diverge > 0
+                    η    = view(ηbracket,2,:)
+                    cxi  = cx ./η' .+ cxkl
+                    cui  = cu ./η' .+ cukl
+                    cxxi = cxx./reshape(η,1,1,N) .+ cxxkl
+                    cxui = cxu./reshape(η,1,1,N) .+ cxukl
+                    cuui = cuu./reshape(η,1,1,N) .+ cuukl
+                    diverge, traj_new,Vx, Vxx,dV = if linearsys
+                        back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,0, regType, lims,x,u,true)
+                    else
+                        back_pass(cxi,cui,cxxi,cxui,cuui,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true)
+                    end
+                    if diverge > 0
+                        delind = diverge
+                        ηbracket[2,delind] .+= del[delind] # TODO: modify η here
+                        del[delind] *= 2
+                        if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", ηbracket); end
+                        if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
+                            verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
+                            break
+                        end
+                    end
+                end
+                k, K = traj_new.k, traj_new.K
+
+                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
+                divergence    = kl_div_wiki(xnew,x,sigmanew, traj_new, traj_prev)
+                constraint_violation = divergence - kl_step
+                if all(abs.(constraint_violation) .< 0.1*kl_step)
+                    break
+                end
+                optimizer(η, -constraint_violation, iter)
+                η .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
+                println(η')
+            end
+        end
         # ====== STEP 4: accept step (or not), print status
 
         #  print headings

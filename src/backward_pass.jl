@@ -31,6 +31,13 @@ end
 
 macro end_backward_pass()
     quote
+        if !isempty(kl_cost_terms)
+            cxkl,cukl,cxxkl,cxukl,cuukl = kl_cost_terms
+            η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,t] : ηbracket[2]
+            Qu = Qu / η + cukl
+            Qux_reg = Qux_reg / η + cxukl
+            QuuF = QuuF / η + cuukl
+        end
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
             try
@@ -78,6 +85,8 @@ macro end_backward_pass()
 end
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false) # nonlinear time variant
+
+
 
     m,N        = size(u)
     n          = size(cx,1)
