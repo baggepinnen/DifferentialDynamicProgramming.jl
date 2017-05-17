@@ -39,12 +39,14 @@ macro end_backward_pass()
             # end
 
             # TODO: fix dimension problem at line 45
-            # TODO: properly broadcast operations below
+            # TODO: potentially use QuF for dV
             ηbracket = kl_cost_terms[2]
             η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,i] : ηbracket[2]
-            Qu = Qu / η + cukl[:,i]
-            Qux_reg = Qux_reg / η + cxukl[:,:,i]
-            QuuF = QuuF / η + cuukl[:,:,i]
+            QuF      = Qu      ./ η .+ cukl[:,i]
+            Qux_reg .= Qux_reg ./ η .+ cxukl[:,:,i]'
+            QuuF    .= QuuF    ./ η .+ cuukl[:,:,i]
+        else
+            QuF = Qu
         end
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
@@ -56,7 +58,7 @@ macro end_backward_pass()
             end
 
             # debug("#  find control law")
-            kK  = -R\(R'\[Qu Qux_reg])
+            kK  = -R\(R'\[QuF Qux_reg])
             k_i = kK[:,1]
             K_i = kK[:,2:n+1]
         else
@@ -65,7 +67,7 @@ macro end_backward_pass()
             upper = lims[:,2]-u[:,i]
             result = 1
             # try
-                k_i,result,R,free = boxQP(QuuF,Qu,lower,upper,k[:,min(i+1,N-1)])
+                k_i,result,R,free = boxQP(QuuF,QuF,lower,upper,k[:,min(i+1,N-1)])
             # catch
                 # result = 0
             # end

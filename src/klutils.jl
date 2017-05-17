@@ -193,5 +193,6 @@ function (a::ADAMOptimizer{T,N}){T,N}(Θ::AbstractArray{T,N}, g::AbstractArray{T
     m̂    = a.m ./ (1 - a.β1 ^ t)
     a.v .= a.β2 .* a.v .+ (1-a.β2) .* g.^2
     v̂    = a.v ./ (1 - a.β2 ^ t)
+    # @show size(Θ), size(m̂), size(v̂)
     Θ  .-= a.α .* m̂ ./ (sqrt.(v̂) .+ a.ɛ)
 end

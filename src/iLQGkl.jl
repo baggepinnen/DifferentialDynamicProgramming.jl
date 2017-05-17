@@ -4,6 +4,8 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     tol_fun            = 1e-7,
     tol_grad           = 1e-4,
     max_iter           = 500,
+    print_head         = 10,
+    print_period       = 1,
     λ                  = 1,
     dλ                 = 1,
     λfactor            = 1.6,
@@ -18,7 +20,8 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     kl_step            = 0,
     ηbracket           = [1e-8,1,1e16], # min_η, η, max_η
     constrain_per_step = false,
-    del0               = 0.0001
+    del0               = 0.0001,
+    gd_alpha           = 0.01
     )
     debug("Entering iLQG")
 
@@ -33,6 +36,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         ηbracket = ηbracket.*ones(1,N)
         kl_step = kl_step*ones(N)
     end
+    η = view(ηbracket,2,:)
 
     # kl_step *= N # constrain per step not yet supported, changed to mean in kl_div
     # --- initialize trace data structure
@@ -77,7 +81,7 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
     expected_reduction = 0.
     divergence         = 0.
     step_mult          = 1.
-    print_head         = 10 # print headings every print_head lines
+    iter               = 0
     last_head          = print_head
     g_norm             = Vector{Float64}()
     Vx = Vxx           = emptyMat3(Float64)
@@ -91,17 +95,16 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
 
     # Determine what kind of system we are dealing with
     linearsys = isempty(fxx) && isempty(fxu) && isempty(fuu); debug("linear system: $linearsys")
+    xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
 
-    for iter = 1:max_iter
+    dV               = Vector{Float64}()
+    reduce_ratio     = 0.
+    kl_cost_terms = (dkl(traj_prev), ηbracket) # TODO: Magic tuple
+    for iter = 1:(constrain_per_step ? 0 : max_iter)
         trace[iter].iter = iter
-        dV               = Vector{Float64}()
-        reduce_ratio     = 0.
 
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
-
         back_pass_done = false
-        del = constrain_per_step ? del0*ones(N) : del0
-        kl_cost_terms = (dkl(traj_prev), ηbracket) # TODO: Magic tuple
         while !back_pass_done
             tic()
             # @show size(cxkl),size(cukl),size(cxxkl),size(cuukl),size(cxukl)
@@ -115,11 +118,10 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             trace[iter].time_backward = toq()
 
             if diverge > 0
-                delind = constrain_per_step ? diverge : 1
-                ηbracket[2,delind] .+= del[delind] # TODO: modify η here
-                del[delind] *= 2
+                ηbracket[2] .+= del0 # TODO: modify η here
+                del0 *= 2
                 if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", ηbracket); end
-                if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
+                if all(ηbracket[2] .>  0.99ηbracket[3]) #  terminate ?
                     verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
                     break
                 end
@@ -139,13 +141,11 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         # ====== STEP 3: Forward pass
         if back_pass_done
             tic()
-            xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
             # debug("#  entering forward_pass")
-            alphai = 1
-            xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
+            xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,fT, lims, diff_fun)
 
             Δcost    = sum(cost) - sum(costnew)
-            expected_reduction = -alphai*(dV[1] + alphai*dV[2])
+            expected_reduction = -(dV[1] + dV[2])
 
             reduce_ratio = if expected_reduction > 0
                 Δcost/expected_reduction
@@ -157,51 +157,17 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             trace[iter].time_forward = toq()
         end
 
-        if constrain_per_step # This implements the gradient descent procedure for η
-            optimizer = ADAMOptimizer(kl_step, α=0.01)
-            for gd_iter = 1:100
-                diverge = 1
-                del = constrain_per_step ? del0*ones(N) : del0
-                while diverge > 0
-                    diverge, traj_new,Vx, Vxx,dV = if linearsys
-                        back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, regType, lims,x,u,true,kl_cost_terms)
-                    else
-                        back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true,kl_cost_terms)
-                    end
-                    if diverge > 0
-                        delind = diverge
-                        ηbracket[2,delind] .+= del[delind] # TODO: modify η here
-                        del[delind] *= 2
-                        if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", ηbracket); end
-                        if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
-                            verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
-                            break
-                        end
-                    end
-                end
-                k, K = traj_new.k, traj_new.K
 
-                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
-                divergence    = kl_div_wiki(xnew,x,sigmanew, traj_new, traj_prev)
-                constraint_violation = divergence - kl_step
-                if all(abs.(constraint_violation) .< 0.1*kl_step)
-                    break
-                end
-                optimizer(η, -constraint_violation, iter)
-                η .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
-                println(η')
-            end
-        end
         # ====== STEP 4: accept step (or not), print status
 
         #  print headings
-        if verbosity > 1
+        if verbosity > 1 && iter % print_period == 0
             if last_head == print_head
                 last_head = 0
-                @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(λ)    log10(η)    divergence      entropy\n")
+                @printf("%-12s", "iteration     cost    reduction     expected    gradient    log10(η)    divergence      entropy\n")
             end
-            @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f%-12.1f%-12.3g%-12.3g\n",
-            iter, sum(cost), Δcost, expected_reduction, g_norm, log10(λ), log10(mean(η)), mean(divergence), entropy(traj_new))
+            @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.3g%-12.1f%-12.3g%-12.3g\n",
+            iter, sum(costnew), Δcost, expected_reduction, g_norm, log10(mean(η)), mean(divergence), entropy(traj_new))
             last_head += 1
         end
 
@@ -211,7 +177,6 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
             break
 
         else #  no cost improvement
-            alphai =  NaN
             push!(trace, Trace())
         end
         if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
@@ -221,13 +186,68 @@ function iLQGkl(f,fT,df, x0, u0, traj_prev;
         #  update trace
         trace[iter].λ            = λ
         trace[iter].dλ           = dλ
-        trace[iter].alpha        = alphai
+        trace[iter].alpha        = 1
         trace[iter].improvement  = Δcost
         trace[iter].cost         = sum(costnew)
         trace[iter].reduce_ratio = reduce_ratio
         trace[iter].divergence   = mean(divergence)
-        trace[iter].η            = mean(η)
+        trace[iter].η            = ηbracket[2]
         graphics(x,u,cost,K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
+    end
+
+    if constrain_per_step # This implements the gradient descent procedure for η
+        optimizer = ADAMOptimizer(kl_step, α=gd_alpha)
+        for iter = 1:max_iter
+            diverge = 1
+            del = del0*ones(N)
+            while diverge > 0
+                diverge, traj_new,Vx, Vxx,dV = if linearsys
+                    back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, regType, lims,x,u,true,kl_cost_terms)
+                else
+                    back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true,kl_cost_terms)
+                end
+                if diverge > 0
+                    delind = diverge
+                    ηbracket[2,delind] .+= del[delind] # TODO: modify η here
+                    del[delind] *= 2
+                    if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", mean(η)); end
+                    if all(ηbracket[2,:] .>  0.99ηbracket[3,:]) #  terminate ?
+                        verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
+                        break
+                    end
+                end
+            end
+            k, K = traj_new.k, traj_new.K
+
+            xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,fT, lims, diff_fun)
+            Δcost                = sum(cost) - sum(costnew)
+            expected_reduction   = -(dV[1] + dV[2])
+            reduce_ratio         = Δcost/expected_reduction
+            divergence           = kl_div_wiki(xnew,x,sigmanew, traj_new, traj_prev)
+            constraint_violation = divergence - kl_step
+            if all(constraint_violation .< 0.1*kl_step) # TODO:
+                satisfied = true
+                break
+            end
+            lη = log.(η)
+            η .= exp(optimizer(lη, -constraint_violation, iter))
+            η                    .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
+            g_norm                = mean(maximum(abs.(k) ./ (abs.(u)+1),1))
+            trace[iter].grad_norm = g_norm
+            if g_norm <  tol_grad && satisfied
+                verbosity > 0 && @printf("\nSUCCESS: gradient norm < tol_grad\n")
+                break
+            end
+            if verbosity > 1 && iter % print_period == 0
+                if last_head == print_head
+                    last_head = 0
+                    @printf("%-12s", "iteration     cost    reduction     expected    log10(η)    divergence      entropy\n")
+                end
+                @printf("%-12d%-12.6g%-12.3g%-12.3g%-12.1f%-12.3g%-12.3g\n",
+                iter, sum(costnew), Δcost, expected_reduction, log10(mean(η)), mean(divergence), entropy(traj_new))
+                last_head += 1
+            end
+        end
     end
 
     iter ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
