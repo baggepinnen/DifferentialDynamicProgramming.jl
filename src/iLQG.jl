@@ -20,6 +20,20 @@ type Trace
     Trace() = new(0,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.)
 end
 
+"""
+    `GaussianPolicy{P}`
+
+# Fileds:
+```
+T::Int          # number of time steps
+n::Int          # State dimension
+m::Int          # Number of control inputs
+K::Array{P,3}   # Time-varying feedback gain ∈ R(n,m,T)
+k::Array{P,2}   # Open loop control signal  ∈ R(m,T)
+Σ::Array{P,3}   # Time-varying controller covariance  ∈ R(m,m,T)
+Σi::Array{P,3}  # The inverses of Σ
+```
+"""
 type GaussianPolicy{P}
     T::Int
     n::Int
@@ -139,7 +153,7 @@ booktitle={Robotics and Automation (ICRA), 2014 IEEE International Conference on
 title={Control-Limited Differential Dynamic Programming},
 year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}`
 """
-function iLQG(f,fT,df, x0, u0;
+function iLQG(f,costfun,df, x0, u0;
     lims             = [],
     alpha            = logspace(0,-3,11),
     tol_fun          = 1e-7,
@@ -179,7 +193,7 @@ function iLQG(f,fT,df, x0, u0;
         diverge = true
         for alphai ∈ alpha
             debug("# test different backtracing parameters alpha and break loop when first succeeds")
-            x,un,cost,_ = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,fT, lims,diff_fun)
+            x,un,cost,_ = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,costfun, lims,diff_fun)
             debug("# simplistic divergence test")
             if all(abs.(x) .< 1e8)
                 u = un
@@ -269,7 +283,7 @@ function iLQG(f,fT,df, x0, u0;
             tic()
             debug("#  serial backtracking line-search")
             for alphai = alpha
-                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,fT, lims, diff_fun)
+                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,costfun, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
                 expected_reduction = -alphai*(dV[1] + alphai*dV[2])
                 reduce_ratio = if expected_reduction > 0
@@ -346,7 +360,7 @@ function iLQG(f,fT,df, x0, u0;
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
 
-function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
+function forward_pass(traj_new, x0,u,x,alpha,f,costfun,lims,diff)
     n         = size(x0,1)
     m,N       = size(u)
     xnew      = Array{eltype(x0)}(n,N)
@@ -362,11 +376,12 @@ function forward_pass(traj_new, x0,u,x,alpha,f,fT,lims,diff)
         if !isempty(lims)
             unew[:,i] = clamp.(unew[:,i],lims[:,1], lims[:,2])
         end
-        xnewi, cnew[i]  = f(xnew[:,i], unew[:,i], i)
+        xnewi  = f(xnew[:,i], unew[:,i], i)
         if i < N
             xnew[:,i+1] = xnewi
         end
     end
+    cnew = costfun(xnew, unew)
     # cnew[N+1] = fT(xnew[:,N+1])
     sigmanew = cat(3,[eye(n) for i = 1:N]...) # TODO: this function should calculate the covariance matrix as well
     return xnew,unew,cnew,sigmanew
@@ -381,14 +396,18 @@ function print_timing(trace,iter,t_start,cost,g_norm,λ)
     fwd_t   = sum(fwd_t[.!isnan.(fwd_t)])
     total_t = time()-t_start
     info = 100/total_t*[diff_t, back_t, fwd_t, (total_t-diff_t-back_t-fwd_t)]
-    @printf("\n iterations:   %-3d\n
-    final cost:   %-12.7g\n
-    final grad:   %-12.7g\n
-    final λ: %-12.7e\n
-    time / iter:  %-5.0f ms\n
-    total time:   %-5.2f seconds, of which\n
-    derivs:     %-4.1f%%\n
-    back pass:  %-4.1f%%\n
-    fwd pass:   %-4.1f%%\n
-    other:      %-4.1f%% (graphics etc.)\n =========== end iLQG ===========\n",iter,sum(cost),g_norm,λ,1e3*total_t/iter,total_t,info[1],info[2],info[3],info[4])
+    try
+        @printf("\n iterations:   %-3d\n
+        final cost:   %-12.7g\n
+        final grad:   %-12.7g\n
+        final λ: %-12.7e\n
+        time / iter:  %-5.0f ms\n
+        total time:   %-5.2f seconds, of which\n
+        derivs:     %-4.1f%%\n
+        back pass:  %-4.1f%%\n
+        fwd pass:   %-4.1f%%\n
+        other:      %-4.1f%% (graphics etc.)\n =========== end iLQG ===========\n",iter,sum(cost),g_norm,λ,1e3*total_t/iter,total_t,info[1],info[2],info[3],info[4])
+    catch
+        @show g_norm
+    end
 end

@@ -139,6 +139,7 @@ function calc_η(xnew,xold,sigmanew,ηbracket, traj_new, traj_prev, kl_step::Abs
         debug(@sprintf("KL: %12.7f / %12.7f, converged",  mean(divergence), mean(kl_step)))
     else
         too_big = constraint_violation .< 0
+        debug("calc_η: Sum(too big η) = $sum(too_big)")
 
         ηbracket[3,too_big] = ηbracket[2,too_big]
         ηbracket[2,too_big] = max.(geom(ηbracket[:,too_big]), 0.1*ηbracket[3,too_big])
