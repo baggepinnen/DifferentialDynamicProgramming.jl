@@ -71,17 +71,17 @@ s.t.  x[:,i+1] = f(x[:,i],u[:,i])
 
 Inputs
 ======
-`f, fT, df`
+`f, costfun, df`
 
 1) step:
-`xnew,cost = f(x,u,i)` is called during the forward pass.
+`xnew = f(x,u,i)` is called during the forward pass.
 Here the state x and control u are vectors: size(x)==(n,),
 size(u)==(m,). The time index `i` is a scalar.
 
 
-2) final:
-`cost = fT(x)` is called at the end the forward pass to compute
-the final cost.
+2) cost:
+`cost = costfun(x,u)` is called in the forward pass to compute
+the cost per time-step along the trajectory `x,u`.
 
 3) derivatives:
 `fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x,u)` computes the
@@ -107,9 +107,8 @@ size(x)==(n, N)
 `u` - the optimal open-loop control sequence.
 size(u)==(m, N)
 
-`L` - the optimal closed loop control gains. These gains multiply the
-deviation of a simulated trajectory from the nominal trajectory x.
-size(L)==(m, n N)
+`traj_new` - A new `GaussianPolicy` object containing feedforward control trajectory and feedback-gains, these gains multiply the
+deviation of a simulated trajectory from the nominal trajectory x. See `?GaussianPolicy` for more help.
 
 `Vx` - the gradient of the cost-to-go. size(Vx)==(n, N)
 
@@ -118,33 +117,28 @@ size(L)==(m, n N)
 `cost` - the costs along the trajectory. size(cost)==(1, N)
 the cost-to-go is V = fliplr(cumsum(fliplr(cost)))
 
-`λ` - the final value of the regularization parameter
-
 `trace` - a trace of various convergence-related values. One row for each
 iteration, the columns of trace are
 `[iter λ alpha g_norm Δcost z sum(cost) dλ]`
 see below for details.
 
-`timing` - timing information
----------------------- user-adjustable parameters ------------------------
-defaults
-
-`lims`,           [],            control limits
-`alpha`,          logspace(0,-3,11), backtracking coefficients
-`tol_fun`,         1e-7,          reduction exit criterion
-`tol_grad`,        1e-4,          gradient exit criterion
-`max_iter`,        500,           maximum iterations
-`λ`,         1,             initial value for λ
-`dλ`,        1,             initial value for dλ
-`λfactor`,   1.6,           λ scaling factor
-`λmax`,      1e10,          λ maximum value
-`λmin`,      1e-6,          below this value λ = 0
-`regType`,        1,             regularization type 1: q_uu+λ*I 2: V_xx+λ*I
-`reduce_ratio_min`,           0,             minimal accepted reduction ratio
-`diff_fun`,         -,             user-defined diff for sub-space optimization
-`plot`,           1,             0: no  k>0: every k iters k<0: every k iters, with derivs window
-`verbosity`,      2,             0: no  1: final 2: iter 3: iter, detailed
-`plot_fun`,         x->0,          user-defined graphics callback
+# Keyword arguments
+`lims`,           [],            control limits\n
+`alpha`,          logspace(0,-3,11), backtracking coefficients\n
+`tol_fun`,         1e-7,          reduction exit criterion\n
+`tol_grad`,        1e-4,          gradient exit criterion\n
+`max_iter`,        500,           maximum iterations\n
+`λ`,         1,             initial value for λ\n
+`dλ`,        1,             initial value for dλ\n
+`λfactor`,   1.6,           λ scaling factor\n
+`λmax`,      1e10,          λ maximum value\n
+`λmin`,      1e-6,          below this value λ = 0\n
+`regType`,        1,             regularization type 1: q_uu+λ*I 2: V_xx+λ*I\n
+`reduce_ratio_min`,           0,             minimal accepted reduction ratio\n
+`diff_fun`,         -,             user-defined diff for sub-space optimization\n
+`plot`,           1,             0: no  k>0: every k iters k<0: every k iters, with derivs window\n
+`verbosity`,      2,             0: no  1: final 2: iter 3: iter, detailed\n
+`plot_fun`,         x->0,          user-defined graphics callback\n
 `cost`,           [],            initial cost for pre-rolled trajectory
 
 This code consists of a port and extension of a MATLAB library provided by the autors of

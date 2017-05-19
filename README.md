@@ -96,3 +96,8 @@ BIBTeX:
   title={Control-Limited Differential Dynamic Programming},
   year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}
   http://www.mathworks.com/matlabcentral/fileexchange/52069-ilqg-ddp-trajectory-optimization
+
+
+
+# Experimental features
+The development branch `dev` contains a function `iLQGkl` that solves the same problem as `iLQG`, with an added constraint on the KL-divergence between the new trajectory distribution and the distribution induced by a previous controller. This feature can be used in an outer loop with repeated experiments between the iterations if the model used for optimization is uncertain. 
