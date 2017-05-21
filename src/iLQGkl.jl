@@ -18,7 +18,7 @@
         gd_alpha           = 0.01                   # Step size in GD (ADAMOptimizer) when constrain_per_step is true
         )`
 
-Solves the iLQG problem with constraints on control signals `lims` and bound on the KL-divergence `kl_step` from the old trajectory distribution `traj_prev::GaussianPolicy`. 
+Solves the iLQG problem with constraints on control signals `lims` and bound on the KL-divergence `kl_step` from the old trajectory distribution `traj_prev::GaussianPolicy`.
 """
 function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     constrain_per_step = false,
@@ -41,7 +41,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     debug("Entering iLQG")
 
     # --- initial sizes and controls
-    u            = copy(traj.k) # initial control sequence
+    u            = copy(traj_prev.k) # initial control sequence
     n            = size(x0, 1) # dimension of state vector
     m,N          = size(u) # dimension of control vector and number of state transitions
     traj_new     = GaussianPolicy(Float64)
@@ -55,7 +55,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
 
     # --- initialize trace data structure
     trace = [Trace() for i in 1:min( max_iter+1,1e6)]
-    trace[1].iter,trace[1].λ,trace[1].dλ = 1,λ,dλ
+    trace[1].iter = 1
 
     # --- initial trajectory
     debug("Setting up initial trajectory")
@@ -111,9 +111,9 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             tic()
             # debug("Entering back_pass with η=$ηbracket")
             diverge, traj_new,Vx, Vxx,dV = if linearsys
-                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, regType, lims,x,u,true,kl_cost_terms) # Set λ=0 since we use η
+                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, 1, lims,x,u,true,kl_cost_terms) # Set λ=0 since we use η
             else
-                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true,kl_cost_terms) # Set λ=0 since we use η
+                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, 1, lims,x,u,true,kl_cost_terms) # Set λ=0 since we use η
             end
             trace[iter].time_backward = toq()
 
@@ -169,8 +169,6 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             last_head += 1
         end
         #  update trace
-        trace[iter].λ            = λ
-        trace[iter].dλ           = dλ
         trace[iter].alpha        = 1
         trace[iter].improvement  = Δcost
         trace[iter].cost         = sum(costnew)
@@ -192,7 +190,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
             break
         end
-        graphics(x,u,cost,K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
+        graphics(xnew,unew,cost,traj_new.K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
     end
 
     if constrain_per_step # This implements the gradient descent procedure for η
