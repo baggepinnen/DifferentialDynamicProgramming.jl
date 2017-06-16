@@ -1,5 +1,8 @@
 # DifferentialDynamicProgramming
 
+[![DifferentialDynamicProgramming](http://pkg.julialang.org/badges/DifferentialDynamicProgramming_0.4.svg)](http://pkg.julialang.org/?pkg=DifferentialDynamicProgramming)
+[![DifferentialDynamicProgramming](http://pkg.julialang.org/badges/DifferentialDynamicProgramming_0.5.svg)](http://pkg.julialang.org/?pkg=DifferentialDynamicProgramming)
+[![DifferentialDynamicProgramming](http://pkg.julialang.org/badges/DifferentialDynamicProgramming_0.6.svg)](http://pkg.julialang.org/?pkg=DifferentialDynamicProgramming)
 [![Build Status](https://travis-ci.org/baggepinnen/DifferentialDynamicProgramming.jl.svg?branch=master)](https://travis-ci.org/baggepinnen/DifferentialDynamicProgramming.jl)
 
 [![Coverage Status](https://coveralls.io/repos/github/baggepinnen/DifferentialDynamicProgramming.jl/badge.png?branch=master)](https://coveralls.io/github/baggepinnen/DifferentialDynamicProgramming.jl?branch=master)
