@@ -61,7 +61,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     debug("Setting up initial trajectory")
     if size(x0,2) == 1 # only initial state provided
         diverge = true
-        x,u,cost,_ = forward_pass(traj_new,x0[:,1],u,[],1,f,fT, lims,diff_fun)
+        x,u,cost,_ = forward_pass(traj_new,x0[:,1],u,[],1,f,costfun, lims,diff_fun)
         debug("# simplistic divergence test")
         if !all(abs.(x) .< 1e8)
             @printf("\nEXIT: Initial control sequence caused divergence\n")

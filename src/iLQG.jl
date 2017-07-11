@@ -376,7 +376,7 @@ function forward_pass(traj_new, x0,u,x,alpha,f,costfun,lims,diff)
         end
     end
     cnew = costfun(xnew, unew)
-    # cnew[N+1] = fT(xnew[:,N+1])
+
     sigmanew = cat(3,[eye(n) for i = 1:N]...) # TODO: this function should calculate the covariance matrix as well
     return xnew,unew,cnew,sigmanew
 end
