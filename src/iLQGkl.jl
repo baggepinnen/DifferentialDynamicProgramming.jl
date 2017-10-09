@@ -200,9 +200,9 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             del = del0*ones(N)
             while diverge > 0
                 diverge, traj_new,Vx, Vxx,dV = if linearsys
-                    back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, regType, lims,x,u,true,kl_cost_terms)
+                    back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, 1, lims,x,u,true,kl_cost_terms)
                 else
-                    back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, regType, lims,x,u,true,kl_cost_terms)
+                    back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, 1, lims,x,u,true,kl_cost_terms)
                 end
                 if diverge > 0
                     delind = diverge
