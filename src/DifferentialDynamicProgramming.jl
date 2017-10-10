@@ -10,6 +10,7 @@ export QPTrace, boxQP, demoQP, Trace, iLQG,iLQGkl, demo_linear, demo_linear_kl, 
 include("boxQP.jl")
 include("iLQG.jl")
 include("iLQGkl.jl")
+include("forward_pass.jl")
 include("backward_pass.jl")
 include("demo_linear.jl")
 @require ControlSystems include("system_pendcart.jl")

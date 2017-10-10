@@ -90,7 +90,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     xnew,unew,costnew  = similar(x),similar(u),Vector{Float64}(N)
     t_start            = time()
     verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")
-    satisfied          = false
+    satisfied          = false # Indicating KL-constraint satisfied
 
     # ====== STEP 1: differentiate dynamics and cost along new trajectory
     trace[1].time_derivs = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
@@ -99,17 +99,18 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     linearsys = isempty(fxx) && isempty(fxu) && isempty(fuu); debug("linear system: $linearsys")
     xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
 
-    dV               = Vector{Float64}()
+    dV               = Vector{Float64}() # Needed to calculate expected reduction
     reduce_ratio     = 0.
     kl_cost_terms    = (dkl(traj_prev), ηbracket) # This tuple is sent into back_pass, elements in ηbracket are mutated.
-    for iter = 1:(constrain_per_step ? 0 : max_iter)
+    for iter = 1:(constrain_per_step ? 0 : max_iter) # Single KL constraint
         trace[iter].iter = iter
 
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         back_pass_done = false
-        while !back_pass_done
+        while !back_pass_done # Done when regularization (through 1/η) for Quu is high enough
             tic()
             # debug("Entering back_pass with η=$ηbracket")
+            # η is the only regularization when optimizing KL, hence λ = 0 and regType arbitrary
             diverge, traj_new,Vx, Vxx,dV = if linearsys
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,0, 1, lims,x,u,true,kl_cost_terms) # Set λ=0 since we use η
             else
@@ -118,9 +119,10 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             trace[iter].time_backward = toq()
 
             if diverge > 0
-                ηbracket[2] .+= del0 # TODO: modify η here
+                ηbracket[2] .+= del0 # η increased, used in back_pass through kl_cost_terms
+                # Higher η downweights the original Q function and upweights KL-cost terms
                 del0 *= 2
-                if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", ηbracket); end
+                if verbosity > 2; println("Inversion failed at timestep $diverge. η-bracket: ", ηbracket); end
                 if ηbracket[2] >  0.99ηbracket[3] #  terminate ?
                     verbosity > 0 && @printf("\nEXIT: η > ηmax (back_pass failed)\n")
                     break
@@ -142,7 +144,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,costfun, lims, diff_fun)
 
             Δcost    = sum(cost) - sum(costnew)
-            expected_reduction = -(dV[1] + dV[2])
+            expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
 
             reduce_ratio = if expected_reduction > 0
                 Δcost/expected_reduction
@@ -150,6 +152,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
                 warn("negative expected reduction: should not occur")
                 sign(Δcost)
             end
+            # calc_η modifies the dual variables η according to current constraint_violation
             ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
             trace[iter].time_forward = toq()
             debug("Forward pass done: η: $ηbracket")
@@ -191,7 +194,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             break
         end
         graphics(xnew,unew,cost,traj_new.K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
-    end
+    end # !constrain_per_step
 
     if constrain_per_step # This implements the gradient descent procedure for η
         optimizer = ADAMOptimizer(kl_step, α=gd_alpha)
@@ -205,10 +208,10 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
                     back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,0, 1, lims,x,u,true,kl_cost_terms)
                 end
                 if diverge > 0
-                    delind = diverge
-                    ηbracket[2,delind] .+= del[delind] # TODO: modify η here
+                    delind = diverge # This is very inefficient since back_pass only returs a single diverge per call.
+                    ηbracket[2,delind] .+= del[delind]
                     del[delind] *= 2
-                    if verbosity > 2; println("Cholesky failed at timestep $diverge. η-bracket: ", mean(η)); end
+                    if verbosity > 2; println("Inversion failed at timestep $diverge. η-bracket: ", mean(η)); end
                     if all(ηbracket[2,:] .>  0.99ηbracket[3,:])
                         # TODO: This termination criteria could be improved
                         verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
@@ -216,7 +219,6 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
                     end
                 end
             end
-            k, K = traj_new.k, traj_new.K
 
             xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,costfun, lims, diff_fun)
             Δcost                 = sum(cost) - sum(costnew)
@@ -227,7 +229,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
             lη                    = log.(η) # Run GD in log-space (much faster)
             η                    .= exp(optimizer(lη, -constraint_violation, iter))
             η                    .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
-            g_norm                = mean(maximum(abs.(k) ./ (abs.(u)+1),1))
+            g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),1))
             trace[iter].grad_norm = g_norm
             if all(abs.(constraint_violation) .< 0.1*kl_step) # TODO: This almost never happens, gradient on past time indices should be influenced by future constraint_violations
                 satisfied = true
