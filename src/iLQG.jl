@@ -44,20 +44,10 @@ type GaussianPolicy{P}
     Σi::Array{P,3}
 end
 
-type TrajectoryDynamics{P}
-    T::Int
-    n::Int
-    m::Int
-    fx::Array{P,3}
-    fu::Array{P,3}
-    Σ::Array{P,3}
-    Σi::Array{P,3}
-end
 
 GaussianPolicy(P) = GaussianPolicy(0,0,0,emptyMat3(P),emptyMat2(P),emptyMat3(P),emptyMat3(P))
 GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat(3,[eye(P,m) for t=1:T]...),cat(3,[eye(P,m) for t=1:T]...))
-TrajectoryDynamics(P) = TrajectoryDynamics(0,0,0,emptyMat3(P),emptyMat3(P),emptyMat3(P),emptyMat3(P))
-TrajectoryDynamics(P,T,n,m) = TrajectoryDynamics(T,n,m,zeros(P,n,n,T),zeros(P,n,m,T),cat(3,[eye(P,n+m) for t=1:T]...),cat(3,[eye(P,n+m) for t=1:T]...))
+
 Base.isempty(gp::GaussianPolicy) = gp.T == gp.n == gp.m == 0
 Base.length(gp::GaussianPolicy) = gp.T
 

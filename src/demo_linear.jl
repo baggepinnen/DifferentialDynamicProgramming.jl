@@ -57,9 +57,9 @@ function demo_linear(;kwargs...)
         return xnew
     end
     lin_dyn_fT(x,Q) = 0.5*sum(x.*(Q*x))
-    f(x,u,i)   = lin_dyn_f(x,u,A,B,Q,R)
-    costfun(x,u)      = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
-    df(x,u)  = lin_dyn_df(x,u,Q,R)
+    f(x,u,i)        = lin_dyn_f(x,u,A,B,Q,R)
+    costfun(x,u)    = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
+    df(x,u)         = lin_dyn_df(x,u,Q,R)
     # plotFn(x)  = plot(squeeze(x,2)')
 
     # run the optimization
@@ -132,13 +132,13 @@ function demo_linear_kl(;kwargs...)
         x, u, traj, Vx, Vxx, cost, otrace = iLQGkl(f,costfun,df, x, u, traj; cost=cost0, lims=lims,kwargs...);
         totalcost = [ t.cost for t in otrace]
         iters = sum(totalcost .> 0)
-        totalcost = [ otrace[i].cost for i=1:iters]
+        totalcost = totalcost[1:iters]
         outercosts[iter] = sum(totalcost)
         println("Outer loop: Cost = ", sum(cost))
     end
 
 
 
-    plotstuff_linear(x,u,cost,outercosts)
+    plotstuff_linear(x,u,totalcost,outercosts)
     x, u, traj, Vx, Vxx, cost, otrace
 end

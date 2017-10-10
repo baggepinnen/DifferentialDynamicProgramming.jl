@@ -97,7 +97,7 @@ end
 3. Run macro @define_modelcost_functions(modelcost). This macro defines the following functions
 ```
 f(x, u, i)  = f(modelcost, x, u, i)
-fT(x)       = fT(modelcost, x)
+constfun(x) = constfun(modelcost, x)
 df(x, u, I) = df(modelcost, x, u, I)
 ```
 see also `AbstractModel`, `AbstractCost`
@@ -109,37 +109,15 @@ end
 
 function f(modelcost::ModelAndCost, x, u, i)
     xnew = predict(modelcost.model, x, u, i)
-    c    = calculate_cost(modelcost.cost, x, u)
-    return xnew, c
+    return xnew
 end
 
-function fT(modelcost::ModelAndCost, x)
-    calculate_final_cost(modelcost.cost, x)
+function constfun(modelcost::ModelAndCost, x, u)
+    calculate_cost(modelcost.cost, x, u)
 end
 
 function df(modelcost::ModelAndCost, x, u)
     fx,fu,fxx,fxu,fuu = df(modelcost.model, x, u)
     cx,cu,cxx,cuu,cxu = dc(modelcost.cost, x, u)
     return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
-end
-
-"""
-    define_modelcost_functions(modelcost)
-This macro defines the following functions
-```
-f(x, u, i)  = f(modelcost, x, u, i)
-cT(x)       = cT(modelcost, x)
-df(x, u)    = df(modelcost, x, u)
-```
-These functions can only be defined for one type of `ModelAndCost`. If you have several different `ModelAndCost`s, define your functions manually.
-see also `ModelAndCost`, `AbstractModel`, `AbstractCost`
-"""
-macro define_modelcost_functions(modelcost)
-    ex = quote
-        f(x, u, i)  = f($modelcost, x, u, i)
-        cT(x)       = fT($modelcost, x)
-        df(x, u)    = df($modelcost, x, u)
-    end |> esc
-    info("Defined:\nf(x, u, i)  = f($modelcost, x, u, i)\nfT(x) = fT($modelcost, x)\ndf(x, u) = df($modelcost, x, u)")
-    return ex
 end

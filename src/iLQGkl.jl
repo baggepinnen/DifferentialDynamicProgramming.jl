@@ -104,10 +104,10 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     kl_cost_terms    = (dkl(traj_prev), ηbracket) # This tuple is sent into back_pass, elements in ηbracket are mutated.
     for iter = 1:(constrain_per_step ? 0 : max_iter) # Single KL constraint
         trace[iter].iter = iter
-
+        diverge = 1
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         back_pass_done = false
-        while !back_pass_done # Done when regularization (through 1/η) for Quu is high enough
+        while diverge > 0 # Done when regularization (through 1/η) for Quu is high enough
             tic()
             # debug("Entering back_pass with η=$ηbracket")
             # η is the only regularization when optimizing KL, hence λ = 0 and regType arbitrary
@@ -127,10 +127,8 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
                     verbosity > 0 && @printf("\nEXIT: η > ηmax (back_pass failed)\n")
                     break
                 end
-                continue
+
             end
-            debug("Back pass done")
-            back_pass_done = true
         end
 
         #  check for termination due to small gradient
@@ -138,26 +136,24 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
         trace[iter].grad_norm = g_norm
 
         # ====== STEP 3: Forward pass
-        if back_pass_done
-            tic()
-            # debug("#  entering forward_pass")
-            xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,costfun, lims, diff_fun)
 
-            Δcost    = sum(cost) - sum(costnew)
-            expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
+        tic()
+        # debug("#  entering forward_pass")
+        xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,costfun, lims, diff_fun)
 
-            reduce_ratio = if expected_reduction > 0
-                Δcost/expected_reduction
-            else
-                warn("negative expected reduction: should not occur")
-                sign(Δcost)
-            end
-            # calc_η modifies the dual variables η according to current constraint_violation
-            ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
-            trace[iter].time_forward = toq()
-            debug("Forward pass done: η: $ηbracket")
+        Δcost    = sum(cost) - sum(costnew)
+        expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
+
+        reduce_ratio = if expected_reduction > 0
+            Δcost/expected_reduction
+        else
+            warn("negative expected reduction: should not occur")
+            sign(Δcost)
         end
-
+        # calc_η modifies the dual variables η according to current constraint_violation
+        ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
+        trace[iter].time_forward = toq()
+        debug("Forward pass done: η: $ηbracket")
 
         # ====== STEP 4: accept step (or not), print status
 
