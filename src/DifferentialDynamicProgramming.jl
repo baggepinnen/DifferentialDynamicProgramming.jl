@@ -1,12 +1,11 @@
 module DifferentialDynamicProgramming
-using Requires
+using LTVModelsBase, Requires
 const DEBUG = false # Set this flag to true in order to print debug messages
 # package code goes here
 
 export QPTrace, boxQP, demoQP, Trace, iLQG,iLQGkl, demo_linear, demo_linear_kl, GaussianPolicy
 
 
-# include("interfaces.jl")
 include("boxQP.jl")
 include("iLQG.jl")
 include("iLQGkl.jl")

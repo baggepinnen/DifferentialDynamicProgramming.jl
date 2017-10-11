@@ -29,6 +29,21 @@ function forward_pass(traj_new, x0,u,x,α,f,costfun,lims,diff)
     end
     cnew = costfun(xnew, unew)
 
-    sigmanew = cat(3,[eye(n) for i = 1:N]...) # TODO: this function should calculate the covariance matrix as well
-    return xnew,unew,cnew,sigmanew
+    return xnew,unew,cnew
+end
+
+
+
+function forward_covariance(model, x, u)
+    fx,fu,fxx,fxu,fuu = df(model, x, u)
+    n        = size(fx,1)
+    N        = size(fx,3)
+    R1       = covariance(model,x,u) # Simple empirical prediction covariance
+    Σ0       = R1 # TODO: I was lazy here
+    sigmanew = Array{Float64}(n,n,N)
+    sigmanew[:,:,1] = Σ0
+    for i = 1:N-1
+        sigmanew[:,:,i+1] = fx[:,:,i]*sigmanew[:,:,i]*fx[:,:,i]' + R1 # Iterate dLyap forward
+    end
+    sigmanew
 end

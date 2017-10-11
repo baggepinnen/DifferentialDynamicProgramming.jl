@@ -177,7 +177,7 @@ function iLQG(f,costfun,df, x0, u0;
         diverge = true
         for alphai ∈ alpha
             debug("# test different backtracing parameters alpha and break loop when first succeeds")
-            x,un,cost,_ = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,costfun, lims,diff_fun)
+            x,un,cost, = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,costfun, lims,diff_fun)
             debug("# simplistic divergence test")
             if all(abs.(x) .< 1e8)
                 u = un
@@ -262,12 +262,12 @@ function iLQG(f,costfun,df, x0, u0;
 
         # ====== STEP 3: line-search to find new control sequence, trajectory, cost
         fwd_pass_done  = false
-        xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
+        xnew,unew,costnew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0)
         if back_pass_done
             tic()
             debug("#  serial backtracking line-search")
             for alphai = alpha
-                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,costfun, lims, diff_fun)
+                xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,costfun, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
                 expected_reduction = -alphai*(dV[1] + alphai*dV[2])
                 reduce_ratio = if expected_reduction > 0

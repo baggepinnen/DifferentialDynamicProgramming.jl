@@ -1,5 +1,5 @@
 """
-    `x, u, traj_new, Vx, Vxx, cost, trace = iLQGkl(f,costfun,df, x0, u0, traj_prev;
+    `x, u, traj_new, Vx, Vxx, cost, trace = iLQGkl(dynamics,costfun,derivs, x0, u0, traj_prev, model;
         constrain_per_step = false,
         kl_step            = 0,
         lims               = [],                    # Control signal limits ::Matrix ∈ R(m,2)
@@ -20,7 +20,7 @@
 
 Solves the iLQG problem with constraints on control signals `lims` and bound on the KL-divergence `kl_step` from the old trajectory distribution `traj_prev::GaussianPolicy`.
 """
-function iLQGkl(f,costfun,df, x0, u0, traj_prev;
+function iLQGkl(dynamics,costfun,derivs, x0, u0, traj_prev, model;
     constrain_per_step = false,
     kl_step            = 0,
     lims               = [],
@@ -61,7 +61,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     debug("Setting up initial trajectory")
     if size(x0,2) == 1 # only initial state provided
         diverge = true
-        x,u,cost,_ = forward_pass(traj_new,x0[:,1],u,[],1,f,costfun, lims,diff_fun)
+        x,u,cost = forward_pass(traj_new,x0[:,1],u,[],1,dynamics,costfun, lims,diff_fun)
         debug("# simplistic divergence test")
         if !all(abs.(x) .< 1e8)
             @printf("\nEXIT: Initial control sequence caused divergence\n")
@@ -93,7 +93,7 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
     satisfied          = false # Indicating KL-constraint satisfied
 
     # ====== STEP 1: differentiate dynamics and cost along new trajectory
-    trace[1].time_derivs = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
+    trace[1].time_derivs = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = derivs(x, u)
 
     # Determine what kind of system we are dealing with
     linearsys = isempty(fxx) && isempty(fxu) && isempty(fuu); debug("linear system: $linearsys")
@@ -139,8 +139,8 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
 
         tic()
         # debug("#  entering forward_pass")
-        xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,costfun, lims, diff_fun)
-
+        xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
+        sigmanew = forward_covariance(model, x, u)
         Δcost    = sum(cost) - sum(costnew)
         expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
 
@@ -216,7 +216,8 @@ function iLQGkl(f,costfun,df, x0, u0, traj_prev;
                 end
             end
 
-            xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,1,f,costfun, lims, diff_fun)
+            xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
+            sigmanew = forward_covariance(model, x, u)
             Δcost                 = sum(cost) - sum(costnew)
             expected_reduction    = -(dV[1] + dV[2])
             reduce_ratio          = Δcost/expected_reduction
