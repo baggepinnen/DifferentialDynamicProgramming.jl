@@ -65,12 +65,12 @@ macro end_backward_pass()
             # debug("#  solve Quadratic Program")
             lower = lims[:,1]-u[:,i]
             upper = lims[:,2]-u[:,i]
-            result = 1
-            # try
+            local k_i,result,R,free
+            try
                 k_i,result,R,free = boxQP(QuuF,QuF,lower,upper,k[:,min(i+1,N-1)])
-            # catch
-                # result = 0
-            # end
+            catch
+                result = 0
+            end
             if result < 1
                 diverge  = i
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
