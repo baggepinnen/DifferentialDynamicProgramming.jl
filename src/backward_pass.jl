@@ -38,18 +38,19 @@ macro end_backward_pass()
             #     cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
             # end
 
-            # TODO: fix dimension problem at line 45
+
             # TODO: potentially use QuF for dV
             ηbracket = kl_cost_terms[2]
             η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,i] : ηbracket[2]
             QuF      = Qu      ./ η .+ cukl[:,i]
-            Qux_reg .= Qux_reg ./ η .+ cxukl[:,:,i]'
+            Qux_reg .= Qux_reg ./ η .+ cxukl[:,:,i]
             QuuF    .= QuuF    ./ η .+ cuukl[:,:,i]
         else
             QuF = Qu
         end
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
+            local R
             try
                 R = chol(Hermitian(QuuF))
             catch
@@ -65,7 +66,7 @@ macro end_backward_pass()
             # debug("#  solve Quadratic Program")
             lower = lims[:,1]-u[:,i]
             upper = lims[:,2]-u[:,i]
-            local k_i,result,R,free
+            local k_i,result,free
             try
                 k_i,result,R,free = boxQP(QuuF,QuF,lower,upper,k[:,min(i+1,N-1)])
             catch

@@ -5,19 +5,19 @@ Qt is [Qx; Qu]
 These terms should be added to the Q terms calculated in the backwards pass to produce the final Q terms.
 This Function should be called from within the backwards_pass Function or just prior to it to adjust the cost derivative matrices.
 """
-function dkl(traj_new)
-    isempty(traj_new) && (return (0,0,0,0,0))
+function dkl(traj_prev)
+    isempty(traj_prev) && (return (0,0,0,0,0))
     debug("Calculating KL cost addition terms")
-    m,n,T  = traj_new.m,traj_new.n,traj_new.T
-    cx,cu,cxx,cuu,cxu = zeros(n,T),zeros(m,T),zeros(n,n,T),zeros(m,m,T),zeros(n,m,T)
+    m,n,T  = traj_prev.m,traj_prev.n,traj_prev.T
+    cx,cu,cxx,cuu,cxu = zeros(n,T),zeros(m,T),zeros(n,n,T),zeros(m,m,T),zeros(m,n,T)
     for t in 1:T
-        K, k       = traj_new.K[:,:,t], traj_new.k[:,t]
-        Σi         = traj_new.Σi[:,:,t]
+        K, k       = traj_prev.K[:,:,t], traj_prev.k[:,t]
+        Σi         = traj_prev.Σi[:,:,t]
         cx[:,t]    = K'*Σi*k
         cu[:,t]    = -Σi*k
         cxx[:,:,t] = K'*Σi*K
         cuu[:,:,t] = Σi
-        cxu[:,:,t] = -K'Σi#TODO: maybe -Σi*K? Does fuck up array dims later, https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L355
+        cxu[:,:,t] = -Σi*K # https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L355
     end
     return cx,cu,cxx,cxu,cuu
 end
@@ -32,27 +32,27 @@ function KLmv(Σi,K,k)
     M,v
 end
 
-function kl_div(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::GaussianPolicy)
-    (isempty(new_traj) || isempty(prev_traj)) && (return 0)
+function kl_div(xnew,unew, Σ_new, traj_new::GaussianPolicy, traj_prev::GaussianPolicy)
+    (isempty(traj_new) || isempty(traj_prev)) && (return 0)
     μ_new = [xnew; unew]
-    T     = new_traj.T
-    # m     = size(new_traj.fu,1)
+    T     = traj_new.T
+    # m     = size(traj_new.fu,1)
     kldiv = zeros(T)
     for t = 1:T
         μt    = μ_new[:,t]
         Σt    = Σ_new[:,:,t]
-        Kp    = prev_traj.K[:,:,t]
-        Kn    = new_traj.K[:,:,t]
-        kp    = prev_traj.k[:,t]
-        kn    = new_traj.k[:,t]
-        Σp    = prev_traj.Σ[:,:,t]
-        Σn    = new_traj.Σ[:,:,t]
-        Σip   = prev_traj.Σi[:,:,t]
-        Σin   = new_traj.Σi[:,:,t]
+        Kp    = traj_prev.K[:,:,t]
+        Kn    = traj_new.K[:,:,t]
+        kp    = traj_prev.k[:,t]
+        kn    = traj_new.k[:,t]
+        Σp    = traj_prev.Σ[:,:,t]
+        Σn    = traj_new.Σ[:,:,t]
+        Σip   = traj_prev.Σi[:,:,t]
+        Σin   = traj_new.Σi[:,:,t]
         Mp,vp = KLmv(Σip,Kp,kp)
         Mn,vn = KLmv(Σin,Kn,kn)
-        cp    = prev_traj.dV[2]
-        cn    = new_traj.dV[2]
+        cp    = traj_prev.dV[2]
+        cn    = traj_new.dV[2]
 
         kldiv[t] = -0.5μt'(Mn-Mp)*μt -  μt'(vn-vp) - cn + cp -0.5sum(Σt*(Mn-Mp)) -0.5logdet(Σn) + 0.5logdet(Σp)
         kldiv[t] = max(0,kldiv[t])
@@ -61,21 +61,21 @@ function kl_div(xnew,unew, Σ_new, new_traj::GaussianPolicy, prev_traj::Gaussian
 end
 
 
-function kl_div_wiki(xnew,xold, Σ_new, new_traj::GaussianPolicy, prev_traj::GaussianPolicy)
+function kl_div_wiki(xnew,xold, Σ_new, traj_new::GaussianPolicy, traj_prev::GaussianPolicy)
     μ_new = xnew-xold# [xnew; unew] verkar inte som att unew behövs??
-    T,m     = new_traj.T, new_traj.m
+    T,m     = traj_new.T, traj_new.m
     kldiv = zeros(T)
     for t = 1:T
         μt     = μ_new[:,t] # TODO: why is traj mean not compared to old traj mean?
         Σt     = Σ_new[:,:,t]
-        Kp     = prev_traj.K[:,:,t]
-        Kn     = new_traj.K[:,:,t]
-        kp     = prev_traj.k[:,t]
-        kn     = new_traj.k[:,t]
-        Σp     = prev_traj.Σ[:,:,t]
-        Σn     = new_traj.Σ[:,:,t]
-        Σip    = prev_traj.Σi[:,:,t]
-        Σin    = new_traj.Σi[:,:,t]
+        Kp     = traj_prev.K[:,:,t]
+        Kn     = traj_new.K[:,:,t]
+        kp     = traj_prev.k[:,t]
+        kn     = traj_new.k[:,t]
+        Σp     = traj_prev.Σ[:,:,t]
+        Σn     = traj_new.Σ[:,:,t]
+        Σip    = traj_prev.Σi[:,:,t]
+        Σin    = traj_new.Σi[:,:,t]
         dim    = m
         k_diff = kp-kn
         K_diff = Kp-Kn
@@ -93,10 +93,7 @@ function kl_div_wiki(xnew,xold, Σ_new, new_traj::GaussianPolicy, prev_traj::Gau
     return kldiv
 end
 
-
 entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t])/2 for t = 1:traj.T) + traj.m*log(2π*e)/2
-# TODO: Calculate Σ in the forwards pass, requires covariance of forward dynamics model. Is this is given by the Pkn matrix from the Kalman model?
-
 
 """
 new_η, satisfied, divergence = calc_η(xnew,xold,sigmanew,η, traj_new, traj_prev, kl_step)

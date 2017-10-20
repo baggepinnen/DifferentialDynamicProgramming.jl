@@ -19,6 +19,8 @@
         )`
 
 Solves the iLQG problem with constraints on control signals `lims` and bound on the KL-divergence `kl_step` from the old trajectory distribution `traj_prev::GaussianPolicy`.
+
+To solve the maximum entropy problem, use controller `controller(xi,i)  = u[:,i] + K[:,:,i]*(xi-x[:,i]) + chol(Σ)*randn(m)` where `K` comes from `traj_new`. Note that multiplying the cost by a constant changes the relative weight between the cost term and the entropy term, i.e., higher cost produces less noise through chol(Σ) since (Σ = Qᵤᵤ⁻¹).
 """
 function iLQGkl(dynamics,costfun,derivs, x0, u0, traj_prev, model;
     constrain_per_step = false,
