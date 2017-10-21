@@ -1,5 +1,5 @@
 """
-Calculate the Q terms related to the KL-constraint.
+Calculate the Q terms related to the KL-constraint. (Actually, only related to log(p̂(τ)) since the constraint is rewritten as Entropy term and other term dissapears into expectation under p(τ).)
 Qtt is [Qxx Qxu; Qux Quu]
 Qt is [Qx; Qu]
 These terms should be added to the Q terms calculated in the backwards pass to produce the final Q terms.
@@ -22,21 +22,25 @@ function dkl(traj_prev)
     return cx,cu,cxx,cxu,cuu
 end
 
-
+"""
+    This is the inverse of Σₓᵤ
+"""
 function KLmv(Σi,K,k)
     M =
     [K'*Σi*K  -K'*Σi;
     -Σi*K    Σi ]
-    K', Σi, k
-    v = [K'*Σi*k  -Σi*k]
+    v = [K'*Σi*k;  -Σi*k]
     M,v
 end
 
-function kl_div(xnew,unew, Σ_new, traj_new::GaussianPolicy, traj_prev::GaussianPolicy)
+"""
+    This function produces lots of negative values which are clipped by the max(0,kl)
+"""
+function kl_div(xnew,xold, Σ_new, traj_new, traj_prev)
     (isempty(traj_new) || isempty(traj_prev)) && (return 0)
-    μ_new = [xnew; unew]
+    μ_new = [xnew-xold; unew]
     T     = traj_new.T
-    # m     = size(traj_new.fu,1)
+    # m     = traj_new.m
     kldiv = zeros(T)
     for t = 1:T
         μt    = μ_new[:,t]
@@ -44,34 +48,36 @@ function kl_div(xnew,unew, Σ_new, traj_new::GaussianPolicy, traj_prev::Gaussian
         Kp    = traj_prev.K[:,:,t]
         Kn    = traj_new.K[:,:,t]
         kp    = traj_prev.k[:,t]
-        kn    = traj_new.k[:,t]
+        kn    = traj_new.k[:,t] + kp # unew must be added here
         Σp    = traj_prev.Σ[:,:,t]
         Σn    = traj_new.Σ[:,:,t]
         Σip   = traj_prev.Σi[:,:,t]
         Σin   = traj_new.Σi[:,:,t]
         Mp,vp = KLmv(Σip,Kp,kp)
         Mn,vn = KLmv(Σin,Kn,kn)
-        cp    = traj_prev.dV[2]
-        cn    = traj_new.dV[2]
+        cp    = .5*kp'Σip*kp
+        cn    = .5*kn'Σin*kn
 
-        kldiv[t] = -0.5μt'(Mn-Mp)*μt -  μt'(vn-vp) - cn + cp -0.5sum(Σt*(Mn-Mp)) -0.5logdet(Σn) + 0.5logdet(Σp)
-        kldiv[t] = max(0,kldiv[t])
+        kldiv[t] = -0.5μt'*(Mn-Mp)*μt -  μt'*(vn-vp) - cn + cp -0.5sum(Σt*(Mn-Mp)) -0.5logdet(Σn) + 0.5logdet(Σp)
+        kldiv[t] = max.(0,kldiv[t])
     end
     return kldiv
 end
 
-
-function kl_div_wiki(xnew,xold, Σ_new, traj_new::GaussianPolicy, traj_prev::GaussianPolicy)
-    μ_new = xnew-xold# [xnew; unew] verkar inte som att unew behövs??
-    T,m     = traj_new.T, traj_new.m
+"""
+This version seems to be symmetric and positive
+"""
+function kl_div_wiki(xnew,xold, Σ_new, traj_new, traj_prev)
+    μ_new = xnew-xold
+    T,m,n     = traj_new.T, traj_new.m, traj_new.n
     kldiv = zeros(T)
     for t = 1:T
-        μt     = μ_new[:,t] # TODO: why is traj mean not compared to old traj mean?
-        Σt     = Σ_new[:,:,t]
+        μt     = μ_new[:,t]
+        Σt     = Σ_new[1:n,1:n,t]
         Kp     = traj_prev.K[:,:,t]
         Kn     = traj_new.K[:,:,t]
         kp     = traj_prev.k[:,t]
-        kn     = traj_new.k[:,t]
+        kn     = traj_new.k[:,t] #traj_new.k[:,t] contains kp already
         Σp     = traj_prev.Σ[:,:,t]
         Σn     = traj_new.Σ[:,:,t]
         Σip    = traj_prev.Σi[:,:,t]
@@ -80,9 +86,9 @@ function kl_div_wiki(xnew,xold, Σ_new, traj_new::GaussianPolicy, traj_prev::Gau
         k_diff = kp-kn
         K_diff = Kp-Kn
         try
-            kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff⋅(Σip*k_diff) - dim + logdet(Σp) - logdet(Σn) )
+            kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff'Σip*k_diff - dim + logdet(Σp) - logdet(Σn) ) # Wikipedia term
             kldiv[t] +=  1/2 *( μt'K_diff'Σip*K_diff*μt + trace(K_diff'Σip*K_diff*Σt) )[1]
-            kldiv[t] += k_diff ⋅ (Σip*K_diff*μt)
+            kldiv[t] += k_diff'Σip*K_diff*μt
         catch e
             println(e)
             @show Σip, Σin, Σp, Σn
@@ -92,6 +98,8 @@ function kl_div_wiki(xnew,xold, Σ_new, traj_new::GaussianPolicy, traj_prev::Gau
     kldiv = max.(0,kldiv)
     return kldiv
 end
+
+
 
 entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t])/2 for t = 1:traj.T) + traj.m*log(2π*e)/2
 
@@ -150,23 +158,31 @@ geom(ηbracket::AbstractMatrix) = sqrt.(ηbracket[1,:].*ηbracket[3,:])
 geom(ηbracket::AbstractVector) = sqrt(ηbracket[1]*ηbracket[3])
 
 # using Base.Test
-# n,m,T = 1,1,1
-#
-# traj_new  = GaussianDist(Float64,T,n,m)
-# traj_old  = GaussianDist(Float64,T,n,m)
-# xnew = zeros(n,T)
-# unew = zeros(m,T)
-# Σnew = cat(3,[eye(n+m) for t=1:T]...)
-# @test kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old) == 0
-#
-# traj_new.μu = ones(m,T)
-# kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
-#
-# traj_new.μx = ones(m,T)
-# kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
-#
-# traj_new.Σ .*=2
-# kl_div_wiki(xnew,unew, Σnew, traj_new, traj_old)
+n,m,T = 1,1,3
+Σnew = cat(3,[eye(n+m) for t=1:T]...)
+Σ = cat(3,[eye(m) for t=1:T]...)
+K = zeros(m,n,T)
+k = zeros(m,T)
+
+traj_new  = DifferentialDynamicProgramming.GaussianPolicy(T,n,m,K,k,Σ,Σ)
+traj_prev  = DifferentialDynamicProgramming.GaussianPolicy(T,n,m,copy(K),copy(k),copy(Σ),copy(Σ))
+xnew = zeros(n,T)
+xold = zeros(n,T)
+unew = zeros(m,T)
+
+kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
+
+traj_new.k = ones(m,T)
+traj_prev.k = ones(m,T)
+kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
+traj_new.k .*= 0
+
+traj_new.K = ones(m,n,T)
+kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
+traj_new.K .*= 0
+
+traj_new.Σ .*=2
+kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
 
 
 mutable struct ADAMOptimizer{T,N}

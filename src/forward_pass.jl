@@ -34,16 +34,24 @@ end
 
 
 
-function forward_covariance(model, x, u)
+function forward_covariance(model, x, u, traj)
     fx,fu,fxx,fxu,fuu = df(model, x, u)
     n        = size(fx,1)
+    m        = size(fu,2)
     N        = size(fx,3)
     R1       = covariance(model,x,u) # Simple empirical prediction covariance
     Σ0       = R1 # TODO: I was lazy here
-    sigmanew = Array{Float64}(n,n,N)
-    sigmanew[:,:,1] = Σ0
+    ix = 1:n
+    iu = n+1:n+m
+    sigmanew = Array{Float64}(n+m,n+m,N)
+    sigmanew[ix,ix,1] = Σ0
     for i = 1:N-1
-        sigmanew[:,:,i+1] = fx[:,:,i]*sigmanew[:,:,i]*fx[:,:,i]' + R1 # Iterate dLyap forward
+        K,Σ = traj.K[:,:,i], traj.Σ[:,:,i]
+
+        sigmanew[ix,ix,i+1] = fx[:,:,i]*sigmanew[ix,ix,i]*fx[:,:,i]' + R1 # Iterate dLyap forward
+        sigmanew[iu,ix,i] = K*sigmanew[ix,ix,i]
+        sigmanew[ix,iu,i] = sigmanew[ix,ix,i]*K'
+        sigmanew[iu,iu,i] = K*sigmanew[ix,ix,i]*K' + Σ
     end
     sigmanew
 end

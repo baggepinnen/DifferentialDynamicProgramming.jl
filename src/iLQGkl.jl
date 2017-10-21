@@ -60,16 +60,8 @@ function iLQGkl(dynamics,costfun,derivs, x0, u0, traj_prev, model;
     trace[1].iter = 1
 
     # --- initial trajectory
-    debug("Setting up initial trajectory")
-    if size(x0,2) == 1 # only initial state provided
-        diverge = true
-        x,u,cost = forward_pass(traj_new,x0[:,1],u,[],1,dynamics,costfun, lims,diff_fun)
-        debug("# simplistic divergence test")
-        if !all(abs.(x) .< 1e8)
-            @printf("\nEXIT: Initial control sequence caused divergence\n")
-            return
-        end
-    elseif size(x0,2) == N
+    debug("Checking initial trajectory")
+    if size(x0,2) == N
         debug("# pre-rolled initial forward pass, initial traj provided")
         x        = x0
         diverge  = false
@@ -142,7 +134,8 @@ function iLQGkl(dynamics,costfun,derivs, x0, u0, traj_prev, model;
         tic()
         # debug("#  entering forward_pass")
         xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
-        sigmanew = forward_covariance(model, x, u)
+        sigmanew = forward_covariance(model, x, u, traj_new)
+        traj_new.k .+= traj_prev.k # unew = k_new + k_old + Knew*Δx  
         Δcost    = sum(cost) - sum(costnew)
         expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
 
@@ -219,14 +212,16 @@ function iLQGkl(dynamics,costfun,derivs, x0, u0, traj_prev, model;
             end
 
             xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
-            sigmanew = forward_covariance(model, x, u)
+            sigmanew = forward_covariance(model, x, u, traj_new)
+            traj_new.k .+= traj_prev.k # unew = k_new + k_old + Knew*Δx  
             Δcost                 = sum(cost) - sum(costnew)
             expected_reduction    = -(dV[1] + dV[2])
             reduce_ratio          = Δcost/expected_reduction
+            # TODO: if it's correct to use unew as traj_new.k, then traj_new.k should be sent in to kl_div as well
             divergence            = kl_div_wiki(xnew,x,sigmanew, traj_new, traj_prev)
             constraint_violation  = divergence - kl_step
             lη                    = log.(η) # Run GD in log-space (much faster)
-            η                    .= exp(optimizer(lη, -constraint_violation, iter))
+            η                    .= exp.(optimizer(lη, -constraint_violation, iter))
             η                    .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
             g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),1))
             trace[iter].grad_norm = g_norm
@@ -249,7 +244,9 @@ function iLQGkl(dynamics,costfun,derivs, x0, u0, traj_prev, model;
     iter ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
     if Δcost > 0 # In this case we made an improvement under the model and accept the changes
         x,u,cost  = xnew,unew,costnew
-        traj_new.k = copy(u) # TODO: is this a good idea? maybe only accept changes if kl satisfied?
+        traj_new.k = copy(u)
+        # traj_new.k .+= traj_prev.k # TODO: is this a good idea? maybe only accept changes if kl satisfied? u = Kx + k + u_old?
+
     else
         verbosity > 0 && println("Cost increased, did not accept changes to u")
     end
