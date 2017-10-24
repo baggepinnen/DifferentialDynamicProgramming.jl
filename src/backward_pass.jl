@@ -31,46 +31,32 @@ end
 
 macro end_backward_pass()
     quote
-        if kl_cost_terms != 0
-            cxkl,cukl,cxxkl,cxukl,cuukl = kl_cost_terms[1]
-            # chopdims = ndims(cxx) == 2 && size(cxxkl) != () && !constrain_per_step
-            # if chopdims # TODO: If the special case ndims(cxx) == 2 it will be promoted to 3 dims and another back_pass method will be called, move the addition of costs and if statement into dkl
-            #     cxxkl,cuukl,cxukl = cxxkl[:,:,1],cuukl[:,:,1],cxukl[:,:,1]
-            # end
 
-            # TODO: fix dimension problem at line 45
-            # TODO: potentially use QuF for dV
-            ηbracket = kl_cost_terms[2]
-            η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,i] : ηbracket[2]
-            QuF      = Qu      ./ η .+ cukl[:,i]
-            Qux_reg .= Qux_reg ./ η .+ cxukl[:,:,i]'
-            QuuF    .= QuuF    ./ η .+ cuukl[:,:,i]
-        else
-            QuF = Qu
-        end
+        QuF = Qu
+
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
+            local R
             try
-                R = chol(Hermitian(QuuF))
+                R = cholfact(Hermitian(QuuF))
             catch
                 diverge  = i
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
             end
 
             # debug("#  find control law")
-            kK  = -R\(R'\[QuF Qux_reg])
-            k_i = kK[:,1]
-            K_i = kK[:,2:n+1]
+            k_i = -(R\QuF)
+            K_i = -(R\Qux_reg)
         else
             # debug("#  solve Quadratic Program")
             lower = lims[:,1]-u[:,i]
             upper = lims[:,2]-u[:,i]
-            result = 1
-            # try
+            local k_i,result,free
+            try
                 k_i,result,R,free = boxQP(QuuF,QuF,lower,upper,k[:,min(i+1,N-1)])
-            # catch
-                # result = 0
-            # end
+            catch
+                result = 0
+            end
             if result < 1
                 diverge  = i
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
@@ -82,19 +68,21 @@ macro end_backward_pass()
             end
         end
         # debug("#  update cost-to-go approximation")
-        # Qxx         = Hermitian(Qxx)
-        dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
-        Vx[:,i]    = Qx + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
-        Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
+
+            dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
+            Vx[:,i]    = Qx + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
+            Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
+
         Vxx[:,:,i] = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
 
         # debug("# save controls/gains")
         k[:,i]   = k_i
         K[:,:,i] = K_i
+
     end |> esc
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # nonlinear time variant
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) # nonlinear time variant
 
 
 
@@ -115,9 +103,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,N]
     Quu[:,:,N] = cuu[:,:,N]
-    if updateQuui
-        Quui[:,:,N] = inv(Quu[:,:,N])
-    end
+
 
     diverge  = 0
     for i = N-1:-1:1
@@ -149,18 +135,8 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-# GaussianDist
-# T::Int
-# n::Int
-# m::Int
-# fx::Array{P,3}
-# fu::Array{P,3}
-# Σ::Array{P,3}
-# μx::Array{P,2}
-# μu::Array{P,2}
 
-
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # quadratic timeinvariant cost, dynamics nonlinear time variant
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) # quadratic timeinvariant cost, dynamics nonlinear time variant
 
     @setupQTIC
 
@@ -178,7 +154,6 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
             fuuVx = vectens(Vx[:,i+1],fuu[:,:,:,i])
             Quu[:,:,i]   = Quu[:,:,i] + fuuVx
         end
-        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         Qxx = cxx  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         isempty(fxx) || (Qxx .+= vectens(Vx[:,i+1],fxx[:,:,:,i]))
         Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
@@ -188,12 +163,13 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
         isempty(fuu) || (QuuF .+= fuuVx)
 
         @end_backward_pass
+
     end
 
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # quadratic timeinvariant cost, linear time variant dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeinvariant cost, linear time variant dynamics
     @setupQTIC
     for i = N-1:-1:1
         Qu         = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
@@ -204,14 +180,13 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
         Vxx_reg    = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
         Qux_reg    = cxu' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
         QuuF       = cuu + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
-        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         @end_backward_pass
     end
 
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # quadratic timeVariant cost, linear time variant dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeVariant cost, linear time variant dynamics
     m          = size(u,1)
     n,N        = size(fx,1,3)
 
@@ -232,9 +207,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,end]
     Quu[:,:,N] = cuu[:,:,N]
-    if updateQuui
-        Quui[:,:,N] = inv(Quu[:,:,N])
-    end
+
     diverge    = 0
 
     for i = N-1:-1:1
@@ -246,14 +219,13 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
         Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
         Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         @end_backward_pass
     end
 
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u,updateQuui=false,kl_cost_terms=0) # cost quadratic and cost and LTI dynamics
+function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u) # cost quadratic and cost and LTI dynamics
 
     m,N = size(u)
     n   = size(fx,1)
@@ -273,9 +245,6 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx
     Quu[:,:,N] = cuu
-    if updateQuui
-        Quui[:,:,N] = inv(Quu[:,:,N])
-    end
 
     diverge    = 0
     for i = N-1:-1:1
@@ -287,7 +256,6 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
         Vxx_reg    = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
         Qux_reg    = cxu' + fu'Vxx_reg*fx
         QuuF       = cuu + fu'Vxx_reg*fu + (regType == 1 ? λ*eye(m) : 0)
-        updateQuui && (Quui[:,:,i] = inv(Quu[:,:,i]))
         @end_backward_pass
     end
 
@@ -299,4 +267,107 @@ end
 
 function graphics(x...)
     return 0
+end
+
+
+
+
+
+
+
+
+
+function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,lims,x,u,kl_cost_terms) # quadratic timeVariant cost, linear time variant dynamics
+    m          = size(u,1)
+    n,N        = size(fx,1,3)
+    ηbracket = kl_cost_terms[2]
+    η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,N] : ηbracket[2]
+    cxkl,cukl,cxxkl,cxukl,cuukl = kl_cost_terms[1]
+
+    cx         = reshape(cx, (n, N))
+    cu         = reshape(cu, (m, N))
+    cxx        = reshape(cxx, (n, n, N))
+    cxu        = reshape(cxu, (n, m, N))
+    cuu        = reshape(cuu, (m, m, N))
+
+    k          = zeros(m,N)
+    K          = zeros(m,n,N)
+    Vx         = zeros(n,N)
+    Vxx        = zeros(n,n,N)
+    Quu        = Array{T}(m,m,N)
+    Quui       = Array{T}(m,m,N)
+    dV         = [0., 0.]
+
+    Vx[:,N]    = cx[:,N]
+    Vxx[:,:,N] = cxx[:,:,end]
+    Quu[:,:,N] = cuu[:,:,N]./ η .+ cuukl[:,:,N]
+
+    Quui[:,:,N] = inv(Quu[:,:,N])
+
+    diverge    = 0
+
+    for i = N-1:-1:1
+        Qu          = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
+        Qx          = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
+        Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
+        Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
+        Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
+
+
+        ηbracket = kl_cost_terms[2]
+        η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,i] : ηbracket[2]
+        Qu         = Qu ./ η + cukl[:,i]
+        Qux        = Qux ./ η + cxukl[:,:,i]
+        Quu[:,:,i] = Quu[:,:,i] ./ η + cuukl[:,:,i]
+        Qx         = Qx ./ η + cxkl[:,i]
+        Qxx        = Qxx ./ η + cxxkl[:,:,i]
+
+        if isempty(lims) || lims[1,1] > lims[1,2]
+            # debug("#  no control limits: Cholesky decomposition, check for non-PD")
+            local R
+            try
+                R = cholfact(Hermitian(Quu[:,:,i]))
+            catch
+                diverge  = i
+                return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
+            end
+
+            # debug("#  find control law")
+            k_i = -(R\Qu)
+            K_i = -(R\Qux)
+        else
+            # debug("#  solve Quadratic Program")
+            lower = lims[:,1]-u[:,i]
+            upper = lims[:,2]-u[:,i]
+            local k_i,result,free
+            try
+                k_i,result,R,free = boxQP(Quu[:,:,i],Qu,lower,upper,k[:,min(i+1,N-1)])
+            catch
+                result = 0
+            end
+            if result < 1
+                diverge  = i
+                return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
+            end
+            K_i  = zeros(m,n)
+            if any(free)
+                Lfree         = -R\(R'\Qux[free,:])
+                K_i[free,:]   = Lfree
+            end
+        end
+        # debug("#  update cost-to-go approximation")
+
+        dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
+        Vx[:,i]    = Qx  + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
+        Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
+
+        Vxx[:,:,i] = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
+
+        # debug("# save controls/gains")
+        k[:,i]   = k_i
+        K[:,:,i] = K_i
+        Quui[:,:,i] = inv(Quu[:,:,i])
+    end
+
+    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end

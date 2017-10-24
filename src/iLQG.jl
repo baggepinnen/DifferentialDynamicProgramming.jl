@@ -44,21 +44,10 @@ type GaussianPolicy{P}
     Σi::Array{P,3}
 end
 
-type TrajectoryDynamics{P}
-    T::Int
-    n::Int
-    m::Int
-    fx::Array{P,3}
-    fu::Array{P,3}
-    Σ::Array{P,3}
-    Σi::Array{P,3}
-end
 
 GaussianPolicy(P) = GaussianPolicy(0,0,0,emptyMat3(P),emptyMat2(P),emptyMat3(P),emptyMat3(P))
 GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat(3,[eye(P,m) for t=1:T]...),cat(3,[eye(P,m) for t=1:T]...))
-TrajectoryDynamics(P) = TrajectoryDynamics(0,0,0,emptyMat3(P),emptyMat3(P),emptyMat3(P),emptyMat3(P))
-TrajectoryDynamics(P,T,n,m) = TrajectoryDynamics(T,n,m,zeros(P,n,n,T),zeros(P,n,m,T),cat(3,[eye(P,n+m) for t=1:T]...),cat(3,[eye(P,n+m) for t=1:T]...))
-Base.isempty(gd::GaussianPolicy) = gd.T == gd.n == gd.m == 0
+Base.isempty(gp::GaussianPolicy) = gp.T == gp.n == gp.m == 0
 Base.length(gp::GaussianPolicy) = gp.T
 
 include("klutils.jl")
@@ -187,7 +176,7 @@ function iLQG(f,costfun,df, x0, u0;
         diverge = true
         for alphai ∈ alpha
             debug("# test different backtracing parameters alpha and break loop when first succeeds")
-            x,un,cost,_ = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,costfun, lims,diff_fun)
+            x,un,cost, = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,costfun, lims,diff_fun)
             debug("# simplistic divergence test")
             if all(abs.(x) .< 1e8)
                 u = un
@@ -272,12 +261,12 @@ function iLQG(f,costfun,df, x0, u0;
 
         # ====== STEP 3: line-search to find new control sequence, trajectory, cost
         fwd_pass_done  = false
-        xnew,unew,costnew,sigmanew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0),Matrix{Float64}(0,0)
+        xnew,unew,costnew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0)
         if back_pass_done
             tic()
             debug("#  serial backtracking line-search")
             for alphai = alpha
-                xnew,unew,costnew,sigmanew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,costfun, lims, diff_fun)
+                xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,costfun, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
                 expected_reduction = -alphai*(dV[1] + alphai*dV[2])
                 reduce_ratio = if expected_reduction > 0
@@ -354,32 +343,6 @@ function iLQG(f,costfun,df, x0, u0;
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
 
-function forward_pass(traj_new, x0,u,x,alpha,f,costfun,lims,diff)
-    n         = size(x0,1)
-    m,N       = size(u)
-    xnew      = Array{eltype(x0)}(n,N)
-    xnew[:,1] = x0
-    unew      = copy(u)
-    cnew      = zeros(N)
-    for i = 1:N
-        if !isempty(traj_new)
-            unew[:,i] .+= traj_new.k[:,i]*alpha
-            dx = diff(xnew[:,i], x[:,i]) # TODO: verify if this is still reasonable
-            unew[:,i] .+= traj_new.K[:,:,i]*dx
-        end
-        if !isempty(lims)
-            unew[:,i] = clamp.(unew[:,i],lims[:,1], lims[:,2])
-        end
-        xnewi  = f(xnew[:,i], unew[:,i], i)
-        if i < N
-            xnew[:,i+1] = xnewi
-        end
-    end
-    cnew = costfun(xnew, unew)
-
-    sigmanew = cat(3,[eye(n) for i = 1:N]...) # TODO: this function should calculate the covariance matrix as well
-    return xnew,unew,cnew,sigmanew
-end
 
 function print_timing(trace,iter,t_start,cost,g_norm,λ)
     diff_t  = [trace[i].time_derivs for i in 1:iter]

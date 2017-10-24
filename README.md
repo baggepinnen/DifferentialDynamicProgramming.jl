@@ -54,26 +54,25 @@ function lin_dyn_df(x,u,Q,R)
     fxx=fxu=fuu = []
     return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
 end
-function lin_dyn_f(x,u,A,B,Q,R)
+function lin_dyn_f(x,u,A,B)
     u[isnan(u)] = 0
     xnew = A*x + B*u
-    c = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
-    return xnew,c
+    return xnew
 end
 
-function lin_dyn_fT(x,Q)
-    c = 0.5*sum(x.*(Q*x))
+function lin_dyn_cost(x,u,Q)
+    c = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
     return c
 end
 
-f(x,u,i)   = lin_dyn_f(x,u,A,B,Q,R)
-fT(x)      = lin_dyn_fT(x,Q)
-df(x,u)  = lin_dyn_df(x,u,Q,R)
+f(x,u,i)     = lin_dyn_f(x,u,A,B,Q,R)
+costfun(x,u) = lin_dyn_cost(x,u,Q)
+df(x,u)      = lin_dyn_df(x,u,Q,R)
 # plotFn(x)  = plot(squeeze(x,2)')
 
 # run the optimization
 
-@time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,fT,df, x0, u0, lims=lims);
+@time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,costfun ,df, x0, u0, lims=lims);
 ```
 
 
@@ -100,4 +99,4 @@ BIBTeX:
 
 
 # Experimental features
-The development branch `dev` contains a function `iLQGkl` that solves the same problem as `iLQG`, with an added constraint on the KL-divergence between the new trajectory distribution and the distribution induced by a previous controller. This feature can be used in an outer loop with repeated experiments between the iterations if the model used for optimization is uncertain. 
+The development branch `dev` contains a function `iLQGkl` that solves the same problem as `iLQG`, with an added constraint on the KL-divergence between the new trajectory distribution and the distribution induced by a previous controller. This feature can be used in an outer loop with repeated experiments between the iterations if the model used for optimization is uncertain.
