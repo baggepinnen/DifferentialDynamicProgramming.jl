@@ -59,7 +59,7 @@ GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat(3
 TrajectoryDynamics(P) = TrajectoryDynamics(0,0,0,emptyMat3(P),emptyMat3(P),emptyMat3(P),emptyMat3(P))
 TrajectoryDynamics(P,T,n,m) = TrajectoryDynamics(T,n,m,zeros(P,n,n,T),zeros(P,n,m,T),cat(3,[eye(P,n+m) for t=1:T]...),cat(3,[eye(P,n+m) for t=1:T]...))
 Base.isempty(gd::GaussianPolicy) = gd.T == gd.n == gd.m == 0
-
+Base.length(gp::GaussianPolicy) = gp.T
 
 include("klutils.jl")
 
