@@ -22,18 +22,13 @@ macro setupQTIC()
         Vx[:,N]    = cx[:,N]
         Vxx[:,:,N] = cxx
         Quu[:,:,N] = cuu
-        if updateQuui
-            Quui[:,:,N] = inv(Quu[:,:,N])
-        end
         diverge    = 0
     end |> esc
 end
 
 macro end_backward_pass()
     quote
-
         QuF = Qu
-
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
             local R
@@ -43,7 +38,6 @@ macro end_backward_pass()
                 diverge  = i
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
             end
-
             # debug("#  find control law")
             k_i = -(R\QuF)
             K_i = -(R\Qux_reg)
@@ -68,11 +62,9 @@ macro end_backward_pass()
             end
         end
         # debug("#  update cost-to-go approximation")
-
-            dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
-            Vx[:,i]    = Qx + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
-            Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
-
+        dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
+        Vx[:,i]    = Qx + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
+        Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
         Vxx[:,:,i] = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
 
         # debug("# save controls/gains")
@@ -83,8 +75,6 @@ macro end_backward_pass()
 end
 
 function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) # nonlinear time variant
-
-
 
     m,N        = size(u)
     n          = size(cx,1)
@@ -103,7 +93,6 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,N]
     Quu[:,:,N] = cuu[:,:,N]
-
 
     diverge  = 0
     for i = N-1:-1:1
@@ -161,11 +150,8 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
         isempty(fxu) || (Qux_reg .+= fxuVx)
         QuuF = cuu  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
         isempty(fuu) || (QuuF .+= fuuVx)
-
         @end_backward_pass
-
     end
-
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
@@ -209,7 +195,6 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     Quu[:,:,N] = cuu[:,:,N]
 
     diverge    = 0
-
     for i = N-1:-1:1
         Qu          = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
         Qx          = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
@@ -263,21 +248,11 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
 end
 
 
-
-
 function graphics(x...)
     return 0
 end
 
-
-
-
-
-
-
-
-
-function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,lims,x,u,kl_cost_terms) # quadratic timeVariant cost, linear time variant dynamics
+function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu, fx::AbstractArray{T,3},fu,lims,x,u,kl_cost_terms) # quadratic timeVariant cost, linear time variant dynamics
     m          = size(u,1)
     n,N        = size(fx,1,3)
     ηbracket = kl_cost_terms[2]
@@ -301,18 +276,15 @@ function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArra
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,end]
     Quu[:,:,N] = cuu[:,:,N]./ η .+ cuukl[:,:,N]
-
     Quui[:,:,N] = inv(Quu[:,:,N])
 
     diverge    = 0
-
     for i = N-1:-1:1
         Qu          = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
         Qx          = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
         Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
         Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-
 
         ηbracket = kl_cost_terms[2]
         η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,i] : ηbracket[2]
@@ -321,6 +293,8 @@ function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArra
         Quu[:,:,i] = Quu[:,:,i] ./ η + cuukl[:,:,i]
         Qx         = Qx ./ η + cxkl[:,i]
         Qxx        = Qxx ./ η + cxxkl[:,:,i]
+
+        Quu[:,:,i] = 0.5*(Quu[:,:,i] + Quu[:,:,i]')
 
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
@@ -357,10 +331,9 @@ function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArra
         end
         # debug("#  update cost-to-go approximation")
 
-        dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
+        dV         = dV  + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
         Vx[:,i]    = Qx  + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
         Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
-
         Vxx[:,:,i] = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
 
         # debug("# save controls/gains")

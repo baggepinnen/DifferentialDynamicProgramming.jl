@@ -1,3 +1,5 @@
+# Just nu räknas kostnaden för u ut på totala värdet av u, medan tilläggstermen i kostnadsfunktionen som optimeras bara använder sig av förändringen i u
+
 """
     `x, u, traj_new, Vx, Vxx, cost, trace = iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         constrain_per_step = false,
@@ -113,11 +115,21 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
                 ηbracket[2] .+= del0 # η increased, used in back_pass through kl_cost_terms
                 # Higher η downweights the original Q function and upweights KL-cost terms
                 del0 *= 2
-                if verbosity > 2; println("Inversion failed at timestep $diverge. η-bracket: ", ηbracket); end
-                if ηbracket[2] >  0.999ηbracket[3] #  terminate ?
-                    verbosity > 0 && @printf("\nEXIT: η > ηmax (back_pass failed)\n")
-                    break
+                if verbosity > 2
+                    println("Inversion failed at timestep $diverge. η-bracket: ", ηbracket)
+
                 end
+                # if ηbracket[2] >  0.999ηbracket[3] #  terminate ?
+                #     if verbosity > 0
+                #         @printf("\nEXIT: η > ηmax (back_pass failed)\n")
+                #         @show kl_cost_terms[1][5]
+                #         @show diverge
+                #         @show traj_new.Σ[:,:,diverge]
+                #         @show traj_new.Σi[:,:,diverge]
+                #         @show ηbracket[2], 0.999ηbracket[3]
+                #     end
+                #     break
+                # end
 
             end
         end
@@ -136,12 +148,8 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         Δcost    = sum(cost) - sum(costnew)
         expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
 
-        reduce_ratio = if expected_reduction > 1e-10
-            Δcost/expected_reduction
-        else
-            warn("negative expected reduction: should not occur")
-            sign(Δcost)
-        end
+        reduce_ratio = Δcost/expected_reduction
+
         # calc_η modifies the dual variables η according to current constraint_violation
         ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
         trace[iter].time_forward = toq()
