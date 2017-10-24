@@ -129,7 +129,7 @@ function demo_linear_kl(;kwargs...)
     totalcost = 0
     @time for iter = 1:5
         cost0 = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
-        x, u, traj, Vx, Vxx, cost, otrace = iLQGkl(f,costfun,df, x, u, traj; cost=cost0, lims=lims,kwargs...);
+        x, u, traj, Vx, Vxx, cost, otrace = iLQGkl(f,costfun,df, x, u, traj, model; cost=cost0, lims=lims,kwargs...);
         totalcost = [ t.cost for t in otrace]
         iters = sum(totalcost .> 0)
         totalcost = totalcost[1:iters]

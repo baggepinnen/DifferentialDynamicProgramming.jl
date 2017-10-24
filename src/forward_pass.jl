@@ -16,7 +16,7 @@ function forward_pass(traj_new, x0,u,x,α,f,costfun,lims,diff)
     for i = 1:N
         if !isempty(traj_new)
             unew[:,i] .+= traj_new.k[:,i]*α
-            dx = diff(xnew[:,i], x[:,i]) # TODO: verify if this is still reasonable
+            dx = diff(xnew[:,i], x[:,i])
             unew[:,i] .+= traj_new.K[:,:,i]*dx
         end
         if !isempty(lims)
@@ -47,7 +47,6 @@ function forward_covariance(model, x, u, traj)
     sigmanew[ix,ix,1] = Σ0
     for i = 1:N-1
         K,Σ = traj.K[:,:,i], traj.Σ[:,:,i]
-
         sigmanew[ix,ix,i+1] = fx[:,:,i]*sigmanew[ix,ix,i]*fx[:,:,i]' + R1 # Iterate dLyap forward
         sigmanew[iu,ix,i] = K*sigmanew[ix,ix,i]
         sigmanew[ix,iu,i] = sigmanew[ix,ix,i]*K'

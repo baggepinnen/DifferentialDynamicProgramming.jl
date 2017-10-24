@@ -5,7 +5,7 @@ Qt is [Qx; Qu]
 These terms should be added to the Q terms calculated in the backwards pass to produce the final Q terms.
 This Function should be called from within the backwards_pass Function or just prior to it to adjust the cost derivative matrices.
 """
-function dkl(traj_prev)
+function ∇kl(traj_prev)
     isempty(traj_prev) && (return (0,0,0,0,0))
     debug("Calculating KL cost addition terms")
     m,n,T  = traj_prev.m,traj_prev.n,traj_prev.T

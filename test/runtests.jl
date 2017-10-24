@@ -5,8 +5,8 @@ info("Compile time is high for this package, this is expected and is not an erro
 # write your own tests here
 
 include("test_readme.jl")
-demo_linear_kl(kl_step=100)
 demo_linear()
+demo_linear_kl(kl_step=100)
 
 
 demoQP()
