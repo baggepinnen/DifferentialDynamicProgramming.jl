@@ -342,9 +342,9 @@ function iLQG(f,costfun,df, x0, u0;
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
 
-function pushoradd!(trace, key::Symbol, iter::Number, val)
-    if haskey(trace, key) && last(trace, key)[1] == iter
-        trace[key].values[end] += val
+function pushoradd!(trace::MultivalueHistory, key::Symbol, iter::Number, val)
+    if haskey(trace, key) && length(trace.storage[key]) >= iter
+        trace[key].values[iter] += val
     else
         push!(trace, key, iter, val)
     end
