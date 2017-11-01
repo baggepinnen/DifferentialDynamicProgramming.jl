@@ -1,5 +1,3 @@
-# Just nu räknas kostnaden för u ut på totala värdet av u, medan tilläggstermen i kostnadsfunktionen som optimeras bara använder sig av förändringen i u
-
 """
     `x, u, traj_new, Vx, Vxx, cost, trace = iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         constrain_per_step = false,
@@ -59,8 +57,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     η = view(ηbracket,2,:)
 
     # --- initialize trace data structure
-    trace = [Trace() for i in 1:min( max_iter+1,1e6)]
-    trace[1].iter = 1
+    trace = MVHistory()
 
     # --- initial trajectory
     debug("Checking initial trajectory")
@@ -73,7 +70,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         error("pre-rolled initial trajectory must be of correct length (size(x0,2) == N)")
     end
 
-    trace[1].cost = sum(cost)
+    push!(trace, :cost, 0, sum(cost))
 
     # constants, timers, counters
     Δcost              = 0.
@@ -90,7 +87,8 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     satisfied          = false # Indicating KL-constraint satisfied
 
     # ====== STEP 1: differentiate dynamics and cost along new trajectory
-    trace[1].time_derivs = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = derivs(x, u)
+    td1 = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = derivs(x, u)
+    push!(trace, :time_derivs, 0, td1)
 
 
     local xnew,unew,costnew,sigmanew
@@ -99,7 +97,6 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     reduce_ratio     = 0.
     kl_cost_terms    = (∇kl(traj_prev), ηbracket) # This tuple is sent into back_pass, elements in ηbracket are mutated.
     for iter = 1:(constrain_per_step ? 0 : max_iter) # Single KL constraint
-        trace[iter].iter = iter
         diverge = 1
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         back_pass_done = false
@@ -109,7 +106,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             # η is the only regularization when optimizing KL, hence λ = 0 and regType arbitrary
             diverge, traj_new,Vx, Vxx,dV =  back_pass_gps(cx,cu,cxx,cxu,cuu,fx,fu, lims,x,u,kl_cost_terms) # Set λ=0 since we use η
 
-            trace[iter].time_backward = toq()
+            push!(trace, :time_backward, iter, toq())
 
             if diverge > 0
                 ηbracket[2] .+= del0 # η increased, used in back_pass through kl_cost_terms
@@ -136,7 +133,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
 
         #  check for termination due to small gradient
         g_norm = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),1))
-        trace[iter].grad_norm = g_norm
+        push!(trace, :grad_norm, iter, g_norm)
 
         # ====== STEP 3: Forward pass
 
@@ -152,7 +149,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
 
         # calc_η modifies the dual variables η according to current constraint_violation
         ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
-        trace[iter].time_forward = toq()
+        push!(trace, :time_forward, iter, toq())
         debug("Forward pass done: η: $ηbracket")
 
         # ====== STEP 4: accept step (or not), print status
@@ -168,12 +165,12 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             last_head += 1
         end
         #  update trace
-        trace[iter].alpha        = 1
-        trace[iter].improvement  = Δcost
-        trace[iter].cost         = sum(costnew)
-        trace[iter].reduce_ratio = reduce_ratio
-        trace[iter].divergence   = mean(divergence)
-        trace[iter].η            = ηbracket[2]
+        push!(trace, :alpha, iter, 1)
+        push!(trace, :improvement, iter, Δcost)
+        push!(trace, :cost, iter, sum(costnew))
+        push!(trace, :reduce_ratio, iter, reduce_ratio)
+        push!(trace, :divergence, iter, mean(divergence))
+        push!(trace, :η, iter, ηbracket[2])
 
         # Termination checks
         # if g_norm <  tol_grad && divergence-kl_step > 0 # In this case we're only going to get even smaller gradients and might as well quit
@@ -227,7 +224,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             # println(round.(constraint_violation,4))
             η                    .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
             g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),1))
-            trace[iter].grad_norm = g_norm
+            push!(trace, :grad_norm, iter, g_norm)
             # @show maximum(constraint_violation)
             if all(divergence .< 2*kl_step) && mean(constraint_violation) < 0.1*kl_step[1]
                 satisfied = true

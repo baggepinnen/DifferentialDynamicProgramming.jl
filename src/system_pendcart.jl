@@ -5,7 +5,7 @@ plotstuff_pendcart(args...) = println("Install package Plots.jl to plot results 
 
 @require Plots begin
 Base.transpose(s::String) = s
-function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
+function plotstuff_pendcart(x00, u00, x,u,cost00,cost,trace)
     cp = Plots.plot(layout=(1,3))
     sp = Plots.plot(x00',title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Simulation", layout=(2,2))
     Plots.plot!(cp,[u00' cost00[2:end]], title=["Control signal"  "Cost"], lab="Simulation", subplot=1)
@@ -14,10 +14,8 @@ function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
     Plots.plot!(cp,u', legend=true, title="Control signal",lab="Optimized", subplot=1)
     Plots.plot!(cp,cost[2:end], legend=true, title="Cost",lab="Optimized", xlabel="Time step", subplot=2)
 
-    totalcost = [ t.cost for t in otrace]
-    iters = sum(totalcost .> 0)
-    filter!(x->x>0,totalcost)
-    Plots.plot!(cp, totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
+    iters, totalcost = get(trace, :cost)
+    Plots.plot!(cp, iters, totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
 end
 end
 
@@ -179,7 +177,7 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
 
     println("Entering iLQG function")
     # subplot(n=4,nc=2)
-    x, u, L, Vx, Vxx, cost, otrace = iLQG(f,cost_quadratic, df, x0, 0*u00,
+    x, u, L, Vx, Vxx, cost, trace = iLQG(f,cost_quadratic, df, x0, 0*u00,
     lims = lims,
     # plotFn =  x -> Plots.subplot!(x'),
     regType = 2,
@@ -188,8 +186,8 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     tol_fun  = 1e-7,
     max_iter = 1000);
 
-    doplot && plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
+    doplot && plotstuff_pendcart(x00, u00, x,u,cost00,cost,trace)
     println("Done")
 
-    return x, u, L, Vx, Vxx, cost, otrace
+    return x, u, L, Vx, Vxx, cost, trace
 end

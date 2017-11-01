@@ -167,8 +167,9 @@ function iLQG(f,costfun,df, x0, u0;
     # traj_prev = GaussianDist(Float64)
 
     # --- initialize trace data structure
-    trace = [Trace() for i in 1:min( max_iter+1,1e6)]
-    trace[1].iter,trace[1].λ,trace[1].dλ = 1,λ,dλ
+    trace = MVHistory()
+    push!(trace, :λ, 1, λ)
+    push!(trace, :dλ, 1, dλ)
 
     # --- initial trajectory
     debug("Setting up initial trajectory")
@@ -193,7 +194,7 @@ function iLQG(f,costfun,df, x0, u0;
         error("pre-rolled initial trajectory must be of correct length (size(x0,2) == N)")
     end
 
-    trace[1].cost = sum(cost)
+    push!(trace, :cost, 1, sum(cost))
     #     plot_fun(x) # user plotting
 
     if diverge
@@ -217,12 +218,12 @@ function iLQG(f,costfun,df, x0, u0;
 
     iter = accepted_iter = 1
     while accepted_iter <= max_iter
-        trace[iter].iter = iter
         dV               = Vector{Float64}()
         reduce_ratio     = 0.
         # ====== STEP 1: differentiate dynamics and cost along new trajectory
         if flg_change
-            trace[iter].time_derivs = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
+            td1 = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
+            push!(trace, :time_derivs, iter, td1)
             flg_change   = false
         end
         # Determine what kind of system we are dealing with
@@ -238,7 +239,7 @@ function iLQG(f,costfun,df, x0, u0;
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
             end
             iter == 1 && (traj_prev = traj_new) # TODO: set k μu to zero fir traj_prev
-            trace[iter].time_backward = toq()
+            pushoradd!(trace, :time_backward, iter, toq())
 
             if diverge > 0
                 verbosity > 2 && @printf("Cholesky failed at timestep %d.\n",diverge)
@@ -253,7 +254,7 @@ function iLQG(f,costfun,df, x0, u0;
         k, K = traj_new.k, traj_new.K
         #  check for termination due to small gradient
         g_norm = mean(maximum(abs.(k) ./ (abs.(u)+1),1))
-        trace[iter].grad_norm = g_norm
+        push!(trace, :grad_norm, iter, g_norm)
         if g_norm <  tol_grad && λ < 1e-5 && satisfied
             verbosity > 0 && @printf("\nSUCCESS: gradient norm < tol_grad\n")
             break
@@ -280,7 +281,7 @@ function iLQG(f,costfun,df, x0, u0;
                     break
                 end
             end
-            trace[iter].time_forward = toq()
+            push!(trace, :time_forward, toq())
         end
 
         # ====== STEP 4: accept step (or not), print status
@@ -321,16 +322,14 @@ function iLQG(f,costfun,df, x0, u0;
                 verbosity > 0 && @printf("\nEXIT: λ > λmax\n")
                 break
             end
-            push!(trace, Trace())
         end
         #  update trace
-        trace[iter].λ            = λ
-        trace[iter].dλ           = dλ
-        trace[iter].alpha        = alphai
-        trace[iter].improvement  = Δcost
-        trace[iter].cost         = sum(cost)
-        trace[iter].reduce_ratio = reduce_ratio
-        graphics( plot,x,u,cost,K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
+        push!(trace, :λ, λ)
+        push!(trace, :dλ, dλ)
+        push!(trace, :alpha, alphai)
+        push!(trace, :improvement, Δcost)
+        push!(trace, :cost, sum(cost))
+        push!(trace, :reduce_ratio, reduce_ratio)
         iter += 1
     end
 
@@ -343,13 +342,21 @@ function iLQG(f,costfun,df, x0, u0;
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
 
+function pushoradd!(trace, key::Symbol, iter::Number, val)
+    if haskey(trace, key) && last(trace, key)[1] == iter
+        trace[key].values[end] += val
+    else
+        push!(trace, key, iter, val)
+    end
+end
+
 
 function print_timing(trace,iter,t_start,cost,g_norm,λ)
-    diff_t  = [trace[i].time_derivs for i in 1:iter]
+    diff_t  = get(trace, :time_derivs)[2]
     diff_t  = sum(diff_t[.!isnan.(diff_t)])
-    back_t  = [trace[i].time_backward for i in 1:iter]
+    back_t  = get(trace, :time_backward)[2]
     back_t  = sum(back_t[.!isnan.(back_t)])
-    fwd_t   = [trace[i].time_forward for i in 1:iter]
+    fwd_t   = get(trace, :time_forward)[2]
     fwd_t   = sum(fwd_t[.!isnan.(fwd_t)])
     total_t = time()-t_start
     info = 100/total_t*[diff_t, back_t, fwd_t, (total_t-diff_t-back_t-fwd_t)]
