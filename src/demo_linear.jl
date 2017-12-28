@@ -65,10 +65,9 @@ function demo_linear(;kwargs...)
     # run the optimization
     @time x, u, traj_new, Vx, Vxx, cost, otrace = iLQG(f,costfun,df, x0, u0; lims=lims,kwargs...);
 
-    totalcost = get(trace, :cost)[2]
+    totalcost = get(otrace, :cost)[2]
 
-
-    plotstuff_linear(x,u,cost,totalcost)
+    plotstuff_linear(x,u,[cost],totalcost)
     x, u, traj_new, Vx, Vxx, cost, otrace
 end
 
@@ -122,9 +121,8 @@ function demo_linear_kl(;kwargs...)
     # plotFn(x)  = plot(squeeze(x,2)')
     traj = GaussianPolicy(Float64,T,n,m)
     # run the optimization
-    local Vx, Vxx, cost, otrace
+    local Vx, Vxx, cost, otrace, totalcost
     outercosts = zeros(5)
-    totalcost = 0
     @time for iter = 1:5
         cost0 = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
         x, u, traj, Vx, Vxx, cost, otrace = iLQGkl(f,costfun,df, x, u, traj, model; cost=cost0, lims=lims,kwargs...);

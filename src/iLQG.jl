@@ -20,6 +20,8 @@ type Trace
     Trace() = new(0,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.)
 end
 
+(t::MVHistory)(args...) = push!(t, args...)
+
 """
     `GaussianPolicy{P}`
 
@@ -142,8 +144,8 @@ function iLQG(f,costfun,df, x0, u0;
     tol_fun          = 1e-7,
     tol_grad         = 1e-4,
     max_iter         = 500,
-    λ                = 1,
-    dλ               = 1,
+    λ                = 1.,
+    dλ               = 1.,
     λfactor          = 1.6,
     λmax             = 1e10,
     λmin             = 1e-6,
@@ -168,8 +170,8 @@ function iLQG(f,costfun,df, x0, u0;
 
     # --- initialize trace data structure
     trace = MVHistory()
-    push!(trace, :λ, 1, λ)
-    push!(trace, :dλ, 1, dλ)
+    trace(:λ, 0, λ)
+    trace(:dλ, 0, dλ)
 
     # --- initial trajectory
     debug("Setting up initial trajectory")
@@ -194,7 +196,7 @@ function iLQG(f,costfun,df, x0, u0;
         error("pre-rolled initial trajectory must be of correct length (size(x0,2) == N)")
     end
 
-    push!(trace, :cost, 1, sum(cost))
+    trace(:cost, 0, sum(cost))
     #     plot_fun(x) # user plotting
 
     if diverge
@@ -223,7 +225,7 @@ function iLQG(f,costfun,df, x0, u0;
         # ====== STEP 1: differentiate dynamics and cost along new trajectory
         if flg_change
             td1 = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
-            push!(trace, :time_derivs, iter, td1)
+            trace(:time_derivs, iter, td1)
             flg_change   = false
         end
         # Determine what kind of system we are dealing with
@@ -239,7 +241,7 @@ function iLQG(f,costfun,df, x0, u0;
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
             end
             iter == 1 && (traj_prev = traj_new) # TODO: set k μu to zero fir traj_prev
-            pushoradd!(trace, :time_backward, iter, toq())
+            increment!(trace, :time_backward, iter, toq())
 
             if diverge > 0
                 verbosity > 2 && @printf("Cholesky failed at timestep %d.\n",diverge)
@@ -254,7 +256,7 @@ function iLQG(f,costfun,df, x0, u0;
         k, K = traj_new.k, traj_new.K
         #  check for termination due to small gradient
         g_norm = mean(maximum(abs.(k) ./ (abs.(u)+1),1))
-        push!(trace, :grad_norm, iter, g_norm)
+        trace(:grad_norm, iter, g_norm)
         if g_norm <  tol_grad && λ < 1e-5 && satisfied
             verbosity > 0 && @printf("\nSUCCESS: gradient norm < tol_grad\n")
             break
@@ -281,7 +283,7 @@ function iLQG(f,costfun,df, x0, u0;
                     break
                 end
             end
-            push!(trace, :time_forward, toq())
+            trace(:time_forward, toq())
         end
 
         # ====== STEP 4: accept step (or not), print status
@@ -324,12 +326,12 @@ function iLQG(f,costfun,df, x0, u0;
             end
         end
         #  update trace
-        push!(trace, :λ, λ)
-        push!(trace, :dλ, dλ)
-        push!(trace, :alpha, alphai)
-        push!(trace, :improvement, Δcost)
-        push!(trace, :cost, sum(cost))
-        push!(trace, :reduce_ratio, reduce_ratio)
+        trace(:λ, iter, λ)
+        trace(:dλ, iter, dλ)
+        trace(:alpha, iter, alphai)
+        trace(:improvement, iter, Δcost)
+        trace(:cost, iter, sum(cost))
+        trace(:reduce_ratio, iter, reduce_ratio)
         iter += 1
     end
 
@@ -341,15 +343,6 @@ function iLQG(f,costfun,df, x0, u0;
 
     return x, u, traj_new, Vx, Vxx, cost, trace
 end
-
-function pushoradd!(trace::MultivalueHistory, key::Symbol, iter::Number, val)
-    if haskey(trace, key) && length(trace.storage[key]) >= iter
-        trace[key].values[iter] += val
-    else
-        push!(trace, key, iter, val)
-    end
-end
-
 
 function print_timing(trace,iter,t_start,cost,g_norm,λ)
     diff_t  = get(trace, :time_derivs)[2]
