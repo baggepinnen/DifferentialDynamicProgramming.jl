@@ -5,11 +5,10 @@ macro setupQTIC()
         m          = size(u,1)
         n,N        = size(fx,1,3)
 
-        cx         = reshape(cx, (n, N))
-        cu         = reshape(cu, (m, N))
-        cxx        = reshape(cxx, (n, n))
-        cxu        = reshape(cxu, (n, m))
-        cuu        = reshape(cuu, (m, m))
+        @assert size(cx) == (n, N) "size(cx) should be (n, N)"
+        @assert size(cu) == (m, N) "size(cu) should be (m, N)"
+        @assert size(cxx) == (n, n) "size(cxx) should be(n, n) "
+        @assert size(cxu) == (n, m) "size(cxu) should be(n, m) "
 
         k          = zeros(m,N)
         K          = zeros(m,n,N)
@@ -78,11 +77,11 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
 
     m,N        = size(u)
     n          = size(cx,1)
-    cx         = reshape(cx, (n, N))
-    cu         = reshape(cu, (m, N))
-    cxx        = reshape(cxx, (n, n, N))
-    cxu        = reshape(cxu, (n, m, N))
-    cuu        = reshape(cuu, (m, m, N))
+    @assert size(cx) == (n, N)
+    @assert size(cu) == (m, N)
+    @assert size(cxx) == (n, n, N)
+    @assert size(cxu) == (n, m, N)
+    @assert size(cuu) == (m, m, N)
     k          = zeros(m,N)
     K          = zeros(m,n,N)
     Vx         = zeros(n,N)
@@ -176,11 +175,11 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     m          = size(u,1)
     n,N        = size(fx,1,3)
 
-    cx         = reshape(cx, (n, N))
-    cu         = reshape(cu, (m, N))
-    cxx        = reshape(cxx, (n, n, N))
-    cxu        = reshape(cxu, (n, m, N))
-    cuu        = reshape(cuu, (m, m, N))
+    @assert size(cx) == (n, N)
+    @assert size(cu) == (m, N)
+    @assert size(cxx) == (n, n, N)
+    @assert size(cxu) == (n, m, N)
+    @assert size(cuu) == (m, m, N)
 
     k          = zeros(m,N)
     K          = zeros(m,n,N)
@@ -214,11 +213,11 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T
 
     m,N = size(u)
     n   = size(fx,1)
-    cx  = reshape(cx, (n, N))
-    cu  = reshape(cu, (m, N))
-    cxx = reshape(cxx, (n, n))
-    cxu = reshape(cxu, (n, m))
-    cuu = reshape(cuu, (m, m))
+    @assert size(cx) == (n, N)
+    @assert size(cu) == (m, N)
+    @assert size(cxx) == (n, n)
+    @assert size(cxu) == (n, m)
+    @assert size(cuu) == (m, m)
     k   = zeros(m,N)
     K   = zeros(m,n,N)
     Vx  = zeros(n,N)
@@ -259,11 +258,11 @@ function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu, fx::AbstractArr
     η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,N] : ηbracket[2]
     cxkl,cukl,cxxkl,cxukl,cuukl = kl_cost_terms[1]
 
-    cx         = reshape(cx, (n, N))
-    cu         = reshape(cu, (m, N))
-    cxx        = reshape(cxx, (n, n, N))
-    cxu        = reshape(cxu, (n, m, N))
-    cuu        = reshape(cuu, (m, m, N))
+    @assert size(cx) == (n, N)
+    @assert size(cu) == (m, N)
+    @assert size(cxx) == (n, n, N)
+    @assert size(cxu) == (n, m, N)
+    @assert size(cuu) == (m, m, N)
 
     k          = zeros(m,N)
     K          = zeros(m,n,N)
