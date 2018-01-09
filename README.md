@@ -99,4 +99,4 @@ BIBTeX:
 
 
 # Experimental features
-The development branch `dev` contains a function `iLQGkl` that solves the same problem as `iLQG`, with an added constraint on the KL-divergence between the new trajectory distribution and the distribution induced by a previous controller. This feature can be used in an outer loop with repeated experiments between the iterations if the model used for optimization is uncertain.
+The development branch `dev` contains a function `iLQGkl` that solves the same problem as `iLQG`, with an added constraint on the KL-divergence between the new trajectory distribution and the distribution induced by a previous controller. This feature can be used in an outer loop with repeated experiments between the iterations if the model used for optimization is uncertain. Usage of this branch requires `Pkg.clone("https://gitlab.control.lth.se/cont-frb/LTVModelsBase.jl.git")`
