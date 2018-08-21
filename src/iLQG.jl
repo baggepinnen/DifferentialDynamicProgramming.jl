@@ -1,8 +1,8 @@
 import Base: length
-EmptyMat3 = Array{Float64}(0,0,0)
-EmptyMat2 = Array{Float64}(0,0)
-emptyMat3(P) = Array{P}(0,0,0)
-emptyMat2(P) = Array{P}(0,0)
+EmptyMat3 = Array{Float64}(undef, 0,0,0)
+EmptyMat2 = Array{Float64}(undef, 0,0)
+emptyMat3(P) = Array{P}(undef, 0,0,0)
+emptyMat2(P) = Array{P}(undef, 0,0)
 mutable struct Trace
     iter::Int64
     λ::Float64

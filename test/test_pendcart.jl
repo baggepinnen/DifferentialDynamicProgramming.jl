@@ -72,7 +72,7 @@ function lin_dyn_df(x,u)
         0 0 0 1;
         0 0 0 0]
         fu[:,:,ii] = [0, cos(x[1,ii])/0.35, 0, 1]
-        ABd = expm([fx[:,:,ii]*h  fu[:,:,ii]*h; zeros(nu, D + nu)])# ZoH sampling
+        ABd = exp([fx[:,:,ii]*h  fu[:,:,ii]*h; zeros(nu, D + nu)])# ZoH sampling
         fx[:,:,ii] = ABd[1:D,1:D]
         fu[:,:,ii] = ABd[1:D,D+1:D+nu]
     end
@@ -154,7 +154,7 @@ println("Entering iLQG function")
 # subplot(n=4,nc=2)
 
 
-alpha        = logspace(0,-3,11)
+alpha        = exp10.(range(0, stop=-3, length=11))
 tol_fun      = 1e-7
 tol_grad     = 1e-4
 max_iter     = 500
@@ -175,7 +175,7 @@ traj_prev    = 0
 
 
 regType=2
-alpha= logspace(0.2,-3,6)
+alpha= exp10.(range(0.2, stop=-3, length=6))
 verbosity=3
 tol_fun = 1e-7
 max_iter=1000
@@ -189,7 +189,7 @@ emptyMat2(P) = Array(P,0,0)
 
 
 
-type GaussianDist{P}
+mutable struct GaussianDist{P}
     T::Int
     n::Int
     m::Int
@@ -202,7 +202,7 @@ end
 
 GaussianDist(P) = GaussianDist(0,0,0,emptyMat3(P),emptyMat3(P),emptyMat3(P),emptyMat2(P),emptyMat2(P))
 Base.isempty(gd::GaussianDist) = gd.T == gd.n == gd.m == 0
-type GaussianTrajDist{P}
+mutable struct GaussianTrajDist{P}
     policy::GaussianDist{P}
     dynamics::GaussianDist{P}
 end

@@ -69,7 +69,7 @@ function demo_linear_kl(;kwargs...)
     m    = 2             # control dimension
     A    = randn(n,n)
     A    = A-A'          # skew-symmetric = pure imaginary eigenvalues
-    A    = expm(h*A)     # discrete time
+    A    = exp(h*A)     # discrete time
     B    = h*randn(n,m)
 
     # quadratic costs
