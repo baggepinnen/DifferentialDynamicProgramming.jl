@@ -1,4 +1,4 @@
-type QPTrace
+mutable struct QPTrace
     x
     xc
     value

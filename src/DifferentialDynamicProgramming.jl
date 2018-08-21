@@ -12,7 +12,7 @@ dir(paths...) = joinpath(@__DIR__, "..", paths...)
 # @require ControlSystems include("system_pendcart.jl")
 
 function debug(x)
-    DEBUG && print_with_color(:blue, string(x),"\n")
+    DEBUG && printstyled(string(x),"\n", color=:blue)
 end
 
 end # module
