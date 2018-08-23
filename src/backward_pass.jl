@@ -3,7 +3,7 @@ vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 macro setupQTIC()
     quote
         m          = size(u,1)
-        n,N        = size(fx,1,3)
+        n,_,N        = size(fx)
 
         @assert size(cx) == (n, N) "size(cx) should be (n, N)"
         @assert size(cu) == (m, N) "size(cu) should be (m, N)"
@@ -111,10 +111,10 @@ function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},
 
         Qxx = cxx[:,:,i] + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         isempty(fxx) || (Qxx .+= vectens(Vx[:,i+1],fxx[:,:,:,i]))
-        Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
+        Vxx_reg = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
         Qux_reg = cxu[:,:,i]'  + fu[:,:,i]'Vxx_reg*fx[:,:,i]
         isempty(fxu) || (Qux_reg .+= fxuVx)
-        QuuF = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
+        QuuF = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
         isempty(fuu) || (QuuF .+= fuuVx)
 
         @end_backward_pass
@@ -144,10 +144,10 @@ function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},
         end
         Qxx = cxx  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         isempty(fxx) || (Qxx .+= vectens(Vx[:,i+1],fxx[:,:,:,i]))
-        Vxx_reg = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
+        Vxx_reg = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
         Qux_reg = cxu'   + fu[:,:,i]'Vxx_reg*fx[:,:,i]
         isempty(fxu) || (Qux_reg .+= fxuVx)
-        QuuF = cuu  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
+        QuuF = cuu  + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
         isempty(fuu) || (QuuF .+= fuuVx)
         @end_backward_pass
     end
@@ -162,9 +162,9 @@ function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},
         Qux        = cxu' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         Quu[:,:,i] = cuu + fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
         Qxx        = cxx + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        Vxx_reg    = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
+        Vxx_reg    = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
         Qux_reg    = cxu' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
-        QuuF       = cuu + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
+        QuuF       = cuu + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
         @end_backward_pass
     end
 
@@ -197,9 +197,9 @@ function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},
     for i = N-1:-1:1
         Qu          = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
         Qx          = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
-        Vxx_reg     = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
+        Vxx_reg     = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
         Qux_reg     = cxu[:,:,i]' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
-        QuuF        = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] + (regType == 1 ? λ*eye(m) : 0)
+        QuuF        = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
         Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
         Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
         Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
@@ -237,9 +237,9 @@ function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},f
         Qux        = cxu' + fu'Vxx[:,:,i+1]*fx
         Quu[:,:,i] = cuu + fu'Vxx[:,:,i+1]*fu
         Qxx        = cxx + fx'Vxx[:,:,i+1]*fx
-        Vxx_reg    = Vxx[:,:,i+1] + (regType == 2 ? λ*eye(n) : 0)
+        Vxx_reg    = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
         Qux_reg    = cxu' + fu'Vxx_reg*fx
-        QuuF       = cuu + fu'Vxx_reg*fu + (regType == 1 ? λ*eye(m) : 0)
+        QuuF       = cuu + fu'Vxx_reg*fu .+ (regType == 1 ? λ*eye(m) : 0)
         @end_backward_pass
     end
 

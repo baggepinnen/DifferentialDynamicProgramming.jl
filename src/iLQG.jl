@@ -36,7 +36,7 @@ k::Array{P,2}   # Open loop control signal  ∈ R(m,T)
 Σi::Array{P,3}  # The inverses of Σ
 ```
 """
-type GaussianPolicy{P}
+mutable struct GaussianPolicy{P}
     T::Int
     n::Int
     m::Int
@@ -159,7 +159,7 @@ function iLQG(f,costfun,df, x0, u0;
     traj_prev        = 0
     )
     debug("Entering iLQG")
-    local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
+    local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu,xnew,unew,costnew,g_norm,Vx,Vxx,dV
     # --- initial sizes and controls
     n   = size(x0, 1)          # dimension of state vector
     m   = size(u0, 1)          # dimension of control vector
@@ -212,15 +212,12 @@ function iLQG(f,costfun,df, x0, u0;
     expected_reduction = 0.
     print_head         = 10 # print headings every print_head lines
     last_head          = print_head
-    g_norm             = Vector{Float64}()
-    Vx = Vxx           = emptyMat3(Float64)
     t_start            = time()
     verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")
     satisfied          = true
 
     iter = accepted_iter = 1
     while accepted_iter <= max_iter
-        dV               = Vector{Float64}()
         reduce_ratio     = 0.
         # ====== STEP 1: differentiate dynamics and cost along new trajectory
         if flg_change
@@ -264,7 +261,6 @@ function iLQG(f,costfun,df, x0, u0;
 
         # ====== STEP 3: line-search to find new control sequence, trajectory, cost
         fwd_pass_done  = false
-        xnew,unew,costnew = Matrix{Float64}(0,0),Matrix{Float64}(0,0),Vector{Float64}(0)
         if back_pass_done
             tic()
             debug("#  serial backtracking line-search")

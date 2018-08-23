@@ -202,7 +202,7 @@ ADAMOptimizer{T,N}(g::AbstractArray{T,N}; α = 0.005,  β1 = 0.9, β2 = 0.999, �
 Applies the gradient `g` to the parameters `Θ` (mutating) at iteration `t`
 ADAM GD update http://sebastianruder.com/optimizing-gradient-descent/index.html#adam
 """
-function (a::ADAMOptimizer{T,N}){T,N}(Θ::AbstractArray{T,N}, g::AbstractArray{T,N}, t)
+function (a::ADAMOptimizer{T,N})(Θ::AbstractArray{T,N}, g::AbstractArray{T,N}, t) where {T,N}
     a.m .= a.β1 .* a.m .+ (1-a.β1) .* g
     m̂    = a.m ./ (1 - a.β1 ^ t)
     a.v .= a.β2 .* a.v .+ (1-a.β2) .* g.^2
