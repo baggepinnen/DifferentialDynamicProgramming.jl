@@ -1,14 +1,4 @@
-
-import Plots
-function plotstuff_linear(x,u,cost,totalcost)
-    p = Plots.plot(layout=(2,2))
-    Plots.plot!(p,x', title="State Trajectories", xlabel="Time step",legend=false, subplot=1, show=false)
-    Plots.plot!(p,cost,c=:black,linewidth=3, title="Cost", xlabel="Time step", subplot=2, show=false)
-    Plots.plot!(p,u',title="Control signals", xlabel="Time step", subplot=3, show=false)
-    Plots.plot!(p,totalcost,title="Total cost", xlabel="Iteration", subplot=4, show=false)
-    Plots.gui()
-end
-
+plotstuff_linear(args...) = println("Install package Plots.jl (and call using Plots) to plot results in the end of demo_linear")
 
 function demo_linear(;kwargs...)
     println("Running linear demo function for DifferentialDynamicProgramming.jl")

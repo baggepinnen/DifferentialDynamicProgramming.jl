@@ -25,19 +25,11 @@ All users of this package for academic purposes are encouraged to cite the origi
 ## Demo functions
 The following demo functions are provided
 
-```julia
-include(DifferentialDynamicProgramming.dir("src","demo_linear.jl")
-demo_linear()
-```
-To run the iLQG DDP algorithm on a simple linear problem
 
-`demoQP` To solve a demo quadratic program
+`demo_linear()`     To run the iLQG DDP algorithm on a simple linear problem  
+`demoQP`            To solve a demo quadratic program  
+`demo_pendcart()`   Where a pendulum attached to a cart is simulated.
 
-If `ControlSystems.jl` is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
-```julia
-include(DifferentialDynamicProgramming.dir("src","demo_pendcart.jl")
-demo_pendcart()
-```
 
 ## Usage
 ### Demo linear
@@ -108,3 +100,6 @@ If Control.jl is installed, there is an additional demo function `demo_pendcart(
 
 ![window](images/states_pendcart.png)
 ![window](images/control_pendcart.png)
+
+# Experimental features
+The development branch `dev` contains a function `iLQGkl` that solves the same problem as `iLQG`, with an added constraint on the KL-divergence between the new trajectory distribution and the distribution induced by a previous controller. This feature can be used in an outer loop with repeated experiments between the iterations if the model used for optimization is uncertain. Usage of this branch requires `Pkg.add("https://gitlab.control.lth.se/cont-frb/LTVModelsBase.jl.git")`

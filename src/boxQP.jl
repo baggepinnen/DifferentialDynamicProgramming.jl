@@ -50,7 +50,7 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
     result   = 0
     gnorm    = 0.
     nfactor  = 0
-    trace    = Array{QPTrace}(maxIter)
+    trace    = Array{QPTrace}(undef, maxIter)
     Hfree    = zeros(n,n)
 
 
@@ -60,7 +60,7 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
     LU[.!isfinite.(LU)] .= NaN
 
     debug("# initial objective value")
-    @show value    = (x'g + 0.5x'H*x )[1]
+    value    = (x'g + 0.5x'H*x )[1]
 
     if print > 0
         @printf("==========\nStarting box-QP, dimension %-3d, initial value: %-12.3f\n",n, value)
@@ -108,7 +108,7 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
         end
 
         if factorize
-            Hfree  = chol(H[free,free])  # was   (Hfree, indef)  = chol(H[free,free])
+            Hfree  = cholesky(H[free,free]).U  # was   (Hfree, indef)  = chol(H[free,free])
             #             if indef
             #                 result = -1
             #                 break

@@ -486,7 +486,7 @@ end
 
 vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) where T# nonlinear time variant
+function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) where T# nonlinear time variant
 
     (m,N)  = size(u)
     n  = length(cx) ÷ N

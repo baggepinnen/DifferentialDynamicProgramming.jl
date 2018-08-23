@@ -1,20 +1,4 @@
-using ControlSystems, Plots
-
-function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
-    cp = Plots.plot(layout=(1,3))
-    sp = Plots.plot(x00',title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Simulation", layout=(2,2))
-    Plots.plot!(cp,[u00' cost00[2:end]], title=["Control signal", "Cost"]', lab="Simulation", subplot=1)
-
-    Plots.plot!(sp,x', title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Optimized", xlabel="Time step", legend=true)
-    Plots.plot!(cp,u', legend=true, title="Control signal",lab="Optimized", subplot=1)
-    Plots.plot!(cp,cost[2:end], legend=true, title="Cost",lab="Optimized", xlabel="Time step", subplot=2)
-
-    totalcost = [ t.cost for t in otrace]
-    iters = sum(totalcost .> 0)
-    filter!(x->x>0,totalcost)
-    Plots.plot!(cp, totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
-end
-
+plotstuff_pendcart(args...) = println("Install package Plots.jl (and call using Plots) to plot results in the end of demo_pendcart")
 
 
 """
@@ -69,7 +53,7 @@ function demo_pendcart()
 
 
     function lin_dyn_f(x,u,i)
-        u[isnan(u)] = 0
+        u[isnan.(u)] .= 0
         f = dfsys(x,u,i)
         c = cost_quadratic(x,u)
         return f,c
@@ -81,7 +65,7 @@ function demo_pendcart()
 
 
     function lin_dyn_df(x,u,i::UnitRange)
-        u[isnan(u)] = 0
+        u[isnan.(u)] .= 0
         I = length(i)
         D = size(x,1)
         nu = size(u,1)
@@ -105,7 +89,7 @@ function demo_pendcart()
     end
 
     function lin_dyn_df(x,u,i)
-        u[isnan(u)] = 0
+        u[isnan.(u)] .= 0
         D = size(x,1)
         nu = size(u,1)
         fx = Array{Float64}(D,D)
@@ -157,6 +141,29 @@ function demo_pendcart()
 
         return x, u, c
     end
+    function care(A, B, Q, R)
+        G = try
+            B*inv(R)*B'
+        catch
+            error("R must be non-singular.")
+        end
+        Z = [A  -G;
+            -Q  -A']
+
+        S = schur(Z)
+        S = ordschur(S, real(S.values).<0)
+        U = S.Z
+
+        (m, n) = size(U)
+        U11 = U[1:div(m, 2), 1:div(n,2)]
+        U21 = U[div(m,2)+1:m, 1:div(n,2)]
+        return U21/U11
+    end
+    function lqr(A, B, Q, R)
+        S = care(A, B, Q, R)
+        K = R\B'*S
+        return K
+    end
 
 
     T     = 600                     # Number of time steps
@@ -174,10 +181,9 @@ function demo_pendcart()
     C     = eye(4)                  # Assume all states are measurable
     D     = 4
 
-    sys   = ss(A,B,C,zeros(4))
     Q     = h*diagm([10,1,2,1])     # State weight matrix
     R     = h*1                     # Control weight matrix
-    L     = lqr(sys,Q,R)            # Calculate the optimal state feedback
+    L     = lqr(A,B,Q,R)            # Calculate the optimal state feedback
 
     x0 = [π-0.6,0,0,0]
 
