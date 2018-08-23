@@ -1,9 +1,10 @@
 module DifferentialDynamicProgramming
-using LinearAlgebra, Statistics, Printf, Requires
+using LTVModelsBase, Requires, ValueHistories, LinearAlgebra, Statistics, Printf
 const DEBUG = false # Set this flag to true in order to print debug messages
 # package code goes here
 
-export QPTrace, boxQP, demoQP, Trace, iLQG, demo_linear, demo_pendcart
+export QPTrace, boxQP, demoQP, iLQG,iLQGkl, demo_linear, demo_linear_kl, demo_pendcart, GaussianPolicy
+
 
 function __init__()
     @require Plots="91a5bcdd-55d7-5caf-9e0b-520d859cae80" begin
@@ -37,6 +38,9 @@ end
 dir(paths...) = joinpath(@__DIR__, "..", paths...)
 include("boxQP.jl")
 include("iLQG.jl")
+include("iLQGkl.jl")
+include("forward_pass.jl")
+include("backward_pass.jl")
 include("demo_linear.jl")
 include("system_pendcart.jl")
 
