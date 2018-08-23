@@ -33,18 +33,18 @@ Run the iLQG Function to find an optimal trajectory For the "pendulum on a cart 
 # Arguments
 `x0     = [π-0.6,0,0,0]`
 `goal   = [π,0,0,0]`
-`Q      = diagm([10,1,2,1])` : State weight matrix
-`R      = 1`                 : Control weight matrix
-`lims   = 5.0*[-1 1]`        : control limits,
-`T      = 600`               : Number of time steps
-`doplot = true`              : Plot results
+`Q      = Diagonal([10,1,2,1])` : State weight matrix
+`R      = 1`                    : Control weight matrix
+`lims   = 5.0*[-1 1]`           : control limits,
+`T      = 600`                  : Number of time steps
+`doplot = true`                 : Plot results
 """
 function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
-    Q      = diagm([10.,1,2,1]), # State weight matrix
-    R      = 1.,                 # Control weight matrix
-    lims   = 5.0*[-1 1],        # control limits,
-    T      = 600,               # Number of time steps
-    doplot = true               # Plot results
+    Q      = Diagonal([10.,1,2,1]), # State weight matrix
+    R      = 1.,                    # Control weight matrix
+    lims   = 5.0*[-1 1],            # control limits,
+    T      = 600,                   # Number of time steps
+    doplot = true                   # Plot results
     )
 
     N = T+1
@@ -96,7 +96,7 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     function cost_quadratic(x::Matrix,u)
         d = (x.-goal)
         T = size(u,2)
-        c = Vector{Float64}(T+1)
+        c = Vector{Float64}(undef,T+1)
         for t = 1:T
             c[t] = 0.5(d[:,t]'*Q*d[:,t] + u[:,t]'R*u[:,t])[1]
         end
@@ -121,10 +121,10 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     end
 
 
-    fxc           = Array{Float64}(D,D,I)
-    fuc           = Array{Float64}(D,1,I)
-    fxd           = Array{Float64}(D,D,I)
-    fud           = Array{Float64}(D,1,I)
+    fxc           = Array{Float64}(undef,D,D,I)
+    fuc           = Array{Float64}(undef,D,1,I)
+    fxd           = Array{Float64}(undef,D,D,I)
+    fud           = Array{Float64}(undef,D,1,I)
     for ii = 1:I
         fxc[:,:,ii] = [0 1 0 0;
         0 0 0 0;

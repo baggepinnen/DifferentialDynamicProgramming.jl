@@ -1,5 +1,5 @@
 using DifferentialDynamicProgramming
-using Test
+using Test, Statistics, LinearAlgebra
 
 @info("Compile time is high for this package, this is expected and is not an error.")
 # write your own tests here

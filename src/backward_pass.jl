@@ -1,4 +1,4 @@
-vectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
+choleskyvectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
 macro setupQTIC()
     quote
@@ -14,8 +14,8 @@ macro setupQTIC()
         K          = zeros(m,n,N)
         Vx         = zeros(n,N)
         Vxx        = zeros(n,n,N)
-        Quu        = Array{T}(m,m,N)
-        Quui       = Array{T}(m,m,N)
+        Quu        = Array{T}(undef,m,m,N)
+        Quui       = Array{T}(undef,m,m,N)
         dV         = [0., 0.]
 
         Vx[:,N]    = cx[:,N]
@@ -32,7 +32,7 @@ macro end_backward_pass()
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
             local R
             try
-                R = cholfact(Hermitian(QuuF))
+                R = cholesky(Hermitian(QuuF))
             catch
                 diverge  = i
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
@@ -222,8 +222,8 @@ function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},f
     K   = zeros(m,n,N)
     Vx  = zeros(n,N)
     Vxx = zeros(n,n,N)
-    Quu = Array{T}(m,m,N)
-    Quui = Array{T}(m,m,N)
+    Quu = Array{T}(undef,m,m,N)
+    Quui = Array{T}(undef,m,m,N)
     dV  = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
@@ -299,7 +299,7 @@ function back_pass_gps(cx,cu,cxx::AbstractArray{T,3},cxu,cuu, fx::AbstractArray{
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
             local R
             try
-                R = cholfact(Hermitian(Quu[:,:,i]))
+                R = cholesky(Hermitian(Quu[:,:,i]))
             catch
                 diverge  = i
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV

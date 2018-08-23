@@ -33,14 +33,14 @@ function demo_linear(;kwargs...)
     cxu  = zeros(size(B))
     cuu  = R
     function lin_dyn_df(x,u,Q,R)
-        u[isnan.(u)] = 0
+        u[isnan.(u)] .= 0
         cx  = Q*x
         cu  = R*u
         fxx=fxu=fuu = []
         return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     end
     function lin_dyn_f(x,u,A,B,Q,R)
-        u[isnan.(u)] = 0
+        u[isnan.(u)] .= 0
         xnew = A*x + B*u
         return xnew
     end
@@ -91,14 +91,14 @@ function demo_linear_kl(;kwargs...)
     cxu  = zeros(size(B))
     cuu  = R
     function lin_dyn_df(x,u,Q,R)
-        u[isnan.(u)] = 0
+        u[isnan.(u)] .= 0
         cx  = Q*x
         cu  = R*u
         fxx=fxu=fuu = []
         return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     end
     function lin_dyn_f(x,u,A,B,Q,R)
-        u[isnan.(u)] = 0
+        u[isnan.(u)] .= 0
         xnew = A*x + B*u
         return xnew
     end

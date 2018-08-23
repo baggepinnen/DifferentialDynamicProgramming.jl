@@ -221,8 +221,8 @@ function iLQG(f,costfun,df, x0, u0;
         reduce_ratio     = 0.
         # ====== STEP 1: differentiate dynamics and cost along new trajectory
         if flg_change
-            td1 = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
-            trace(:time_derivs, iter, td1)
+            _t = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = df(x, u)
+            trace(:time_derivs, iter, _t)
             flg_change   = false
         end
         # Determine what kind of system we are dealing with
@@ -231,14 +231,13 @@ function iLQG(f,costfun,df, x0, u0;
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         back_pass_done = false
         while !back_pass_done
-            tic()
-            diverge, traj_new,Vx, Vxx,dV = if linearsys
+            _t = @elapsed diverge, traj_new,Vx, Vxx,dV = if linearsys
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,λ, regType, lims,x,u)
             else
                 back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
             end
+            increment!(trace, :time_backward, iter, _t)
             iter == 1 && (traj_prev = traj_new) # TODO: set k μu to zero fir traj_prev
-            increment!(trace, :time_backward, iter, toq())
 
             if diverge > 0
                 verbosity > 2 && @printf("Cholesky failed at timestep %d.\n",diverge)
@@ -252,7 +251,7 @@ function iLQG(f,costfun,df, x0, u0;
 
         k, K = traj_new.k, traj_new.K
         #  check for termination due to small gradient
-        g_norm = mean(maximum(abs.(k) ./ (abs.(u)+1),1))
+        g_norm = mean(maximum(abs.(k) ./ (abs.(u)+1), dims=1))
         trace(:grad_norm, iter, g_norm)
         if g_norm <  tol_grad && λ < 1e-5 && satisfied
             verbosity > 0 && @printf("\nSUCCESS: gradient norm < tol_grad\n")
@@ -262,9 +261,8 @@ function iLQG(f,costfun,df, x0, u0;
         # ====== STEP 3: line-search to find new control sequence, trajectory, cost
         fwd_pass_done  = false
         if back_pass_done
-            tic()
             debug("#  serial backtracking line-search")
-            for alphai = alpha
+            @elapsed(for alphai = alpha
                 xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,costfun, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
                 expected_reduction = -alphai*(dV[1] + alphai*dV[2])
@@ -278,8 +276,8 @@ function iLQG(f,costfun,df, x0, u0;
                     fwd_pass_done = true
                     break
                 end
-            end
-            trace(:time_forward, toq())
+            end) |> Base.Fix1(trace,:time_forward)
+
         end
 
         # ====== STEP 4: accept step (or not), print status

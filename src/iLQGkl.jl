@@ -41,6 +41,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     gd_alpha           = 0.01
     )
     debug("Entering iLQG")
+    local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu,xnew,unew,costnew,sigmanew,g_norm,Vx,Vxx,dV
 
     # --- initial sizes and controls
     u            = copy(traj_prev.k) # initial control sequence
@@ -77,36 +78,28 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     expected_reduction = 0.
     divergence         = 0.
     step_mult          = 1.
-    iter               = 0
+    itero              = 0
     last_head          = print_head
-    g_norm             = Vector{Float64}()
-    Vx = Vxx           = emptyMat3(Float64)
-    xnew,unew,costnew  = similar(x),similar(u),Vector{Float64}(N)
     t_start            = time()
     verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")
     satisfied          = false # Indicating KL-constraint satisfied
 
     # ====== STEP 1: differentiate dynamics and cost along new trajectory
-    td1 = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = derivs(x, u)
-    trace(:time_derivs, 0, td1)
+    _t = @elapsed fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu = derivs(x, u)
+    trace(:time_derivs, 0, _t)
 
-
-    local xnew,unew,costnew,sigmanew
-
-    dV               = Vector{Float64}() # Needed to calculate expected reduction
     reduce_ratio     = 0.
     kl_cost_terms    = (∇kl(traj_prev), ηbracket) # This tuple is sent into back_pass, elements in ηbracket are mutated.
     for iter = 1:(constrain_per_step ? 0 : max_iter) # Single KL constraint
+        itero = iter
         diverge = 1
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         back_pass_done = false
         while diverge > 0 # Done when regularization (through 1/η) for Quu is high enough
-            tic()
             # debug("Entering back_pass with η=$ηbracket")
             # η is the only regularization when optimizing KL, hence λ = 0 and regType arbitrary
-            diverge, traj_new,Vx, Vxx,dV =  back_pass_gps(cx,cu,cxx,cxu,cuu,fx,fu, lims,x,u,kl_cost_terms) # Set λ=0 since we use η
-
-            trace(:time_backward, iter, toq())
+            _t = @elapsed diverge, traj_new,Vx, Vxx,dV =  back_pass_gps(cx,cu,cxx,cxu,cuu,fx,fu, lims,x,u,kl_cost_terms) # Set λ=0 since we use η
+            trace(:time_backward, iter, _t)
 
             if diverge > 0
                 ηbracket[2] .+= del0 # η increased, used in back_pass through kl_cost_terms
@@ -132,24 +125,25 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         end
 
         #  check for termination due to small gradient
-        g_norm = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),1))
+        g_norm = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),dims=1))
         trace(:grad_norm, iter, g_norm)
 
         # ====== STEP 3: Forward pass
 
-        tic()
-        # debug("#  entering forward_pass")
-        xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
-        sigmanew = forward_covariance(model, x, u, traj_new)
-        traj_new.k .+= traj_prev.k # unew = k_new + k_old + Knew*Δx, this doesn't matter since traj_prev.k set to 0 above
-        Δcost    = sum(cost) - sum(costnew)
-        expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
+        _t = @elapsed begin
+            # debug("#  entering forward_pass")
+            xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
+            sigmanew = forward_covariance(model, x, u, traj_new)
+            traj_new.k .+= traj_prev.k # unew = k_new + k_old + Knew*Δx, this doesn't matter since traj_prev.k set to 0 above
+            Δcost    = sum(cost) - sum(costnew)
+            expected_reduction = -(dV[1] + dV[2]) # According to second order approximation
 
-        reduce_ratio = Δcost/expected_reduction
+            reduce_ratio = Δcost/expected_reduction
 
-        # calc_η modifies the dual variables η according to current constraint_violation
-        ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
-        trace(:time_forward, iter, toq())
+            # calc_η modifies the dual variables η according to current constraint_violation
+            ηbracket, satisfied, divergence = calc_η(xnew,x,sigmanew,ηbracket, traj_new, traj_prev, kl_step)
+        end
+        trace(:time_forward, iter, _t)
         debug("Forward pass done: η: $ηbracket")
 
         # ====== STEP 4: accept step (or not), print status
@@ -192,6 +186,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     if constrain_per_step # This implements the gradient descent procedure for η
         optimizer = ADAMOptimizer(kl_step, α=gd_alpha)
         for iter = 1:max_iter
+            itero = iter
             diverge = 1
             del = del0*ones(N)
             while diverge > 0
@@ -223,7 +218,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             # println(maximum(constraint_violation), " ", extrema(η), " ", indmax(constraint_violation))
             # println(round.(constraint_violation,4))
             η                    .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
-            g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),1))
+            g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),dims=1))
             trace(:grad_norm, iter, g_norm)
             # @show maximum(constraint_violation)
             if all(divergence .< 2*kl_step) && mean(constraint_violation) < 0.1*kl_step[1]
@@ -242,7 +237,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         end
     end
 
-    iter ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
+    itero ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
     # if costnew < 1.1cost # In this case we made an (approximate) improvement under the model and accept the changes
         x,u,cost  = xnew,unew,costnew
         traj_new.k = copy(u)
