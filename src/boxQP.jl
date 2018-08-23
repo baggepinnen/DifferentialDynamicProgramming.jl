@@ -54,19 +54,19 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
     Hfree    = zeros(n,n)
 
 
-    debug("# initial state")
+    # debug("# initial state")
     x = clamp.(x0,lower,upper)
     LU = [lower upper]
     LU[.!isfinite.(LU)] .= NaN
 
-    debug("# initial objective value")
+    # debug("# initial objective value")
     value    = (x'g + 0.5x'H*x )[1]
 
     if print > 0
         @printf("==========\nStarting box-QP, dimension %-3d, initial value: %-12.3f\n",n, value)
     end
 
-    debug("# main loop")
+    # debug("# main loop")
     iter = 1
     while iter <= maxIter
 
@@ -74,37 +74,37 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
             break
         end
 
-        debug("# check relative improvement")
+        # debug("# check relative improvement")
         if iter>1 && (oldvalue - value) < minRelImprove*abs(oldvalue)
             result = 4
             break
         end
         oldvalue = value
 
-        debug("# get gradient")
+        # debug("# get gradient")
         grad     = g + H*x
 
-        debug("# find clamped dimensions")
-        old_clamped  = clamped
-        clamped      = falses(n)
+        # debug("# find clamped dimensions")
+        old_clamped = clamped
+        clamped     = falses(n)
         #         clamped[(x[:,1] .== lower)&(grad[:,1].>0)]   = true
         #         clamped[(x[:,1] .== upper)&(grad[:,1].<0)]   = true
         for i = 1:n
             clamped[i]   = ((x[i,1] == lower[i])&&(grad[i,1]>0)) || ((x[i,1] == upper[i])&&(grad[i,1]<0))
         end
-        free         = .!clamped
+        free = .!clamped
 
-        debug("# check for all clamped")
+        # debug("# check for all clamped")
         if all(clamped)
             result = 6
             break
         end
 
-        debug("# factorize if clamped has changed")
+        # debug("# factorize if clamped has changed")
         if iter == 1
-            factorize    = true
+            factorize = true
         else
-            factorize    = any(old_clamped != clamped)
+            factorize = any(old_clamped != clamped)
         end
 
         if factorize
@@ -116,25 +116,25 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
             nfactor += 1
         end
 
-        debug("# check gradient norm")
+        # debug("# check gradient norm")
         gnorm  = norm(grad[free])
         if gnorm < minGrad
             result = 5
             break
         end
 
-        debug("# get search direction")
+        # debug("# get search direction")
         grad_clamped   = g  + H*(x.*clamped)
         search         = zeros(n,1)
         search[free]   = -Hfree\(Hfree'\grad_clamped[free]) - x[free]
 
-        debug("# check for descent direction")
+        # debug("# check for descent direction")
         sdotg          = sum(search.*grad)
         if sdotg >= 0 # (should not happen)
             break
         end
 
-        debug("# armijo linesearch")
+        # debug("# armijo linesearch")
         step  = 1
         nstep = 0
         xc    = clamp.(x+step*search,lower,upper)
@@ -157,7 +157,7 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
 
         trace[iter] = QPTrace(x,xc,value,search,clamped,nfactor )
 
-        debug("# accept candidate")
+        # debug("# accept candidate")
         x     = xc
         value = vc
         iter += 1
@@ -194,6 +194,6 @@ function demoQP(;kwargs...)
     H 		= H*H'
     lower 	= -ones(n)
     upper 	=  ones(n)
-    @time boxQP(H, g, lower, upper, randn(n);print=1,kwargs...)
+    @time boxQP(H, g, lower, upper, randn(n);print=1, kwargs...)
 
 end
