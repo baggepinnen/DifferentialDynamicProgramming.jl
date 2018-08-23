@@ -123,7 +123,7 @@ year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}`
 """
 function iLQG(f,fT,df, x0, u0;
     lims=           [],
-    Alpha=          logspace(0,-3,11),
+    Alpha=          exp10.(range(0, stop=-3, length=11)),
     tolFun=         1e-7,
     tolGrad=        1e-4,
     maxIter=        500,
@@ -224,7 +224,7 @@ function iLQG(f,fT,df, x0, u0;
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         backPassDone   = false
         l = Matrix{Float64}(0,0)
-        dV = Vector{Float64}(0)
+        dV = Vector{Float64}()
         while !backPassDone
 
             tic()
@@ -275,7 +275,7 @@ function iLQG(f,fT,df, x0, u0;
                     z = dcost/expected
                 else
                     z = sign(dcost)
-                    warn("negative expected reduction: should not occur")
+                    @warn("negative expected reduction: should not occur")
                 end
                 if z > zMin
                     fwdPassDone = true
@@ -547,7 +547,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
 end
 
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) # quadratic timeinvariant cost, dynamics nonlinear time variant
+function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,lambda,regType,lims,u) where T # quadratic timeinvariant cost, dynamics nonlinear time variant
 
     @setupQTIC
 
@@ -590,7 +590,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
     return diverge, Vx, Vxx, k, K, dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,lambda,regType,lims,u) # quadratic timeinvariant cost, linear time variant dynamics
+function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,lambda,regType,lims,u) where T # quadratic timeinvariant cost, linear time variant dynamics
     @setupQTIC
 
     for i = N-1:-1:1
@@ -609,7 +609,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
     return diverge, Vx, Vxx, k, K, dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,lambda,regType,lims,u) # cost quadratic and cost and LTI dynamics
+function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,lambda,regType,lims,u) where T # cost quadratic and cost and LTI dynamics
 
     m  = size(u,1)
     n = size(fx,1)

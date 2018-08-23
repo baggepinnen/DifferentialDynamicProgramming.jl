@@ -96,7 +96,7 @@ function demo_pendcart()
             0 0 0 1;
             0 0 0 0]
             fu[:,:,ii] = [0, cos(x[1,ii])/l, 0, 1]
-            ABd = expm([fx[:,:,ii]*h  fu[:,:,ii]*h; zeros(nu, D + nu)])# ZoH sampling
+            ABd = exp([fx[:,:,ii]*h  fu[:,:,ii]*h; zeros(nu, D + nu)])# ZoH sampling
             fx[:,:,ii] = ABd[1:D,1:D]
             fu[:,:,ii] = ABd[1:D,D+1:D+nu]
         end
@@ -120,7 +120,7 @@ function demo_pendcart()
 
         fu = [0, cos(x[1])/l, 0, 1]
 
-        ABd = expm([fx*h  fu*h; zeros(nu, D + nu)])# ZoH sampling
+        ABd = exp([fx*h  fu*h; zeros(nu, D + nu)])# ZoH sampling
         fx = ABd[1:D,1:D]
         fu = ABd[1:D,D+1:D+nu]
 
@@ -204,7 +204,7 @@ function demo_pendcart()
     lims=lims,
     # plotFn= x -> Plots.subplot!(x'),
     regType=2,
-    Alpha= logspace(0.2,-3,6),
+    Alpha= exp10.(range(0.2, stop=-3, length=6)),
     verbosity=3,
     tolFun = 1e-7,
     maxIter=1000);
