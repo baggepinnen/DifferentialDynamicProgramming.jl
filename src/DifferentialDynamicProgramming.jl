@@ -5,6 +5,8 @@ const DEBUG = false # Set this flag to true in order to print debug messages
 
 export QPTrace, boxQP, demoQP, Trace, iLQG, demo_linear, demo_pendcart
 
+eye(n) = Matrix{Float64}(I,n,n)
+
 function __init__()
     @require Plots="91a5bcdd-55d7-5caf-9e0b-520d859cae80" begin
     @eval LinearAlgebra.adjoint(x::String) = x
