@@ -73,7 +73,7 @@ macro end_backward_pass()
     end |> esc
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) # nonlinear time variant
+function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) where T # nonlinear time variant
 
     m,N        = size(u)
     n          = size(cx,1)
@@ -124,7 +124,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
 end
 
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) # quadratic timeinvariant cost, dynamics nonlinear time variant
+function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) where T # quadratic timeinvariant cost, dynamics nonlinear time variant
 
     @setupQTIC
 
@@ -154,7 +154,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeinvariant cost, linear time variant dynamics
+function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) where T # quadratic timeinvariant cost, linear time variant dynamics
     @setupQTIC
     for i = N-1:-1:1
         Qu         = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
@@ -171,7 +171,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) # quadratic timeVariant cost, linear time variant dynamics
+function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) where T # quadratic timeVariant cost, linear time variant dynamics
     m          = size(u,1)
     n,N        = size(fx,1,3)
 
@@ -209,7 +209,7 @@ function back_pass{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-function back_pass{T}(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u) # cost quadratic and cost and LTI dynamics
+function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u) where T # cost quadratic and cost and LTI dynamics
 
     m,N = size(u)
     n   = size(fx,1)
