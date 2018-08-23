@@ -78,7 +78,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     expected_reduction = 0.
     divergence         = 0.
     step_mult          = 1.
-    itero              = 0
+    iter               = 0
     last_head          = print_head
     t_start            = time()
     verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")
@@ -90,8 +90,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
 
     reduce_ratio     = 0.
     kl_cost_terms    = (∇kl(traj_prev), ηbracket) # This tuple is sent into back_pass, elements in ηbracket are mutated.
-    for iter = 1:(constrain_per_step ? 0 : max_iter) # Single KL constraint
-        itero = iter
+    for outer iter = 1:(constrain_per_step ? 0 : max_iter) # Single KL constraint
         diverge = 1
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         back_pass_done = false
@@ -185,8 +184,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
 
     if constrain_per_step # This implements the gradient descent procedure for η
         optimizer = ADAMOptimizer(kl_step, α=gd_alpha)
-        for iter = 1:max_iter
-            itero = iter
+        for outer iter = 1:max_iter
             diverge = 1
             del = del0*ones(N)
             while diverge > 0
@@ -237,7 +235,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         end
     end
 
-    itero ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
+    iter ==  max_iter &&  verbosity > 0 && @printf("\nEXIT: Maximum iterations reached.\n")
     # if costnew < 1.1cost # In this case we made an (approximate) improvement under the model and accept the changes
         x,u,cost  = xnew,unew,costnew
         traj_new.k = copy(u)
