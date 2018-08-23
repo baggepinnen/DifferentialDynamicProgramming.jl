@@ -6,9 +6,9 @@ using Test
 
 include("test_readme.jl")
 demo_linear()
-demo_linear_kl(kl_step=100)
+# demo_linear_kl(kl_step=100)
 demo_pendcart()
 
 demoQP()
 
-include(Pkg.dir("GuidedPolicySearch","examples","bb.jl"))
+# include(Pkg.dir("GuidedPolicySearch","examples","bb.jl"))

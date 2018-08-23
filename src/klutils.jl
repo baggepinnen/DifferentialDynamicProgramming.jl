@@ -86,8 +86,8 @@ function kl_div_wiki(xnew,xold, Σ_new, traj_new, traj_prev)
         k_diff = kp-kn
         K_diff = Kp-Kn
         try
-            kldiv[t] = 1/2 * (trace(Σip*Σn) + k_diff'Σip*k_diff - dim + logdet(Σp) - logdet(Σn) ) # Wikipedia term
-            kldiv[t] +=  1/2 *( μt'K_diff'Σip*K_diff*μt + trace(K_diff'Σip*K_diff*Σt) )[1]
+            kldiv[t] = 1/2 * (tr(Σip*Σn) + k_diff'Σip*k_diff - dim + logdet(Σp) - logdet(Σn) ) # Wikipedia term
+            kldiv[t] +=  1/2 *( μt'K_diff'Σip*K_diff*μt + tr(K_diff'Σip*K_diff*Σt) )[1]
             kldiv[t] += k_diff'Σip*K_diff*μt
         catch e
             println(e)
@@ -157,32 +157,32 @@ end
 geom(ηbracket::AbstractMatrix) = sqrt.(ηbracket[1,:].*ηbracket[3,:])
 geom(ηbracket::AbstractVector) = sqrt(ηbracket[1]*ηbracket[3])
 
-# using Base.Test
-n,m,T = 1,1,3
-Σnew = cat(3,[eye(n+m) for t=1:T]...)
-Σ = cat(3,[eye(m) for t=1:T]...)
-K = zeros(m,n,T)
-k = zeros(m,T)
-
-traj_new  = DifferentialDynamicProgramming.GaussianPolicy(T,n,m,K,k,Σ,Σ)
-traj_prev  = DifferentialDynamicProgramming.GaussianPolicy(T,n,m,copy(K),copy(k),copy(Σ),copy(Σ))
-xnew = zeros(n,T)
-xold = zeros(n,T)
-unew = zeros(m,T)
-
-kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
-
-traj_new.k = ones(m,T)
-traj_prev.k = ones(m,T)
-kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
-traj_new.k .*= 0
-
-traj_new.K = ones(m,n,T)
-kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
-traj_new.K .*= 0
-
-traj_new.Σ .*=2
-kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
+# # using Base.Test
+# n,m,T = 1,1,3
+# Σnew = cat([eye(n+m) for t=1:T]..., dims=3)
+# Σ = cat([eye(m) for t=1:T]..., dims=3)
+# K = zeros(m,n,T)
+# k = zeros(m,T)
+#
+# traj_new  = DifferentialDynamicProgramming.GaussianPolicy(T,n,m,K,k,Σ,Σ)
+# traj_prev  = DifferentialDynamicProgramming.GaussianPolicy(T,n,m,copy(K),copy(k),copy(Σ),copy(Σ))
+# xnew = zeros(n,T)
+# xold = zeros(n,T)
+# unew = zeros(m,T)
+#
+# kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
+#
+# traj_new.k = ones(m,T)
+# traj_prev.k = ones(m,T)
+# kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
+# traj_new.k .*= 0
+#
+# traj_new.K = ones(m,n,T)
+# kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
+# traj_new.K .*= 0
+#
+# traj_new.Σ .*=2
+# kl_div_wiki(xnew,xold, Σnew, traj_new, traj_prev)
 
 
 mutable struct ADAMOptimizer{T,N}

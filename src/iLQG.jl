@@ -159,7 +159,7 @@ function iLQG(f,costfun,df, x0, u0;
     traj_prev        = 0
     )
     debug("Entering iLQG")
-
+    local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     # --- initial sizes and controls
     n   = size(x0, 1)          # dimension of state vector
     m   = size(u0, 1)          # dimension of control vector

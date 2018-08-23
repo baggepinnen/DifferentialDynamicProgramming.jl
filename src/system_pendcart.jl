@@ -1,5 +1,29 @@
 plotstuff_pendcart(args...) = println("Install package Plots.jl (and call using Plots) to plot results in the end of demo_pendcart")
 
+function care(A, B, Q, R)
+    G = try
+        B*inv(R)*B'
+    catch
+        error("R must be non-singular.")
+    end
+    Z = [A  -G;
+    -Q  -A']
+
+    S = schur(Z)
+    S = ordschur(S, real(S.values).<0)
+    U = S.Z
+
+    (m, n) = size(U)
+    U11 = U[1:div(m, 2), 1:div(n,2)]
+    U21 = U[div(m,2)+1:m, 1:div(n,2)]
+    return U21/U11
+end
+function lqr(A, B, Q, R)
+    S = care(A, B, Q, R)
+    K = R\B'*S
+    return K
+end
+
 
 """
     demo_pendcart(;kwargs...)
@@ -23,20 +47,20 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     doplot = true               # Plot results
     )
 
-    N    = T+1
-    g    = 9.82
-    l    = 0.35 # Length of pendulum
-    h    = 0.01 # Sample time
-    A    = [0 1 0 0; # Linearlized system dynamics matrix, continuous time
+    N = T+1
+    g = 9.82
+    l = 0.35 # Length of pendulum
+    h = 0.01 # Sample time
+    A = [0 1 0 0; # Linearlized system dynamics matrix, continuous time
     g/l 0 0 0;
     0 0 0 1;
     0 0 0 0]
-    B   = [0, -1/l, 0, 1]
-    C   = eye(4) # Assume all states are measurable
-    D   = 4
-    sys = ss(A,B,C,zeros(4))
-    L   = lqr(sys,Q,R) # Calculate the optimal state feedback
+    B = [0, -1/l, 0, 1]
+    C = eye(4) # Assume all states are measurable
+    D = 4
+    L = lqr(A,B,Q,R) # Calculate the optimal state feedback
     I = T
+
     function fsys_closedloop(t,x,L,xd)
         dx = copy(x)
         dx[1] -= pi
@@ -54,7 +78,7 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
         xd[4] = u
     end
 
-    const dfvec = zeros(4)
+    dfvec = zeros(4)
     function dfsys(x,u)
         dfvec[1] = x[1]+h*x[2]
         dfvec[2] = x[2]+h*(-g/l*sin(x[1])+u[1]/l*cos(x[1]))
@@ -80,9 +104,9 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
         return c
     end
 
-const cx = zeros(4,T)
-const cu = zeros(1,T)
-const cxu = zeros(D,1)
+    cx = zeros(4,T)
+    cu = zeros(1,T)
+    cxu = zeros(D,1)
 
     function dcost_quadratic(x,u)
         cx  .= Q*(x.-goal)
@@ -97,10 +121,10 @@ const cxu = zeros(D,1)
     end
 
 
-    const fxc           = Array{Float64}(D,D,I)
-    const fuc           = Array{Float64}(D,1,I)
-    const fxd           = Array{Float64}(D,D,I)
-    const fud           = Array{Float64}(D,1,I)
+    fxc           = Array{Float64}(D,D,I)
+    fuc           = Array{Float64}(D,1,I)
+    fxd           = Array{Float64}(D,D,I)
+    fud           = Array{Float64}(D,1,I)
     for ii = 1:I
         fxc[:,:,ii] = [0 1 0 0;
         0 0 0 0;
@@ -127,8 +151,8 @@ const cxu = zeros(D,1)
         return fxd,fud,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     end
 
-    const x = zeros(4,N)
-    const u = zeros(1,T)
+    x = zeros(4,N)
+    u = zeros(1,T)
 
     """
     Simulate a pendulum on a cart using the non-linear equations
@@ -155,29 +179,6 @@ const cxu = zeros(D,1)
         c = cost(x,u)
 
         return x, u, c
-    end
-    function care(A, B, Q, R)
-        G = try
-            B*inv(R)*B'
-        catch
-            error("R must be non-singular.")
-        end
-        Z = [A  -G;
-            -Q  -A']
-
-        S = schur(Z)
-        S = ordschur(S, real(S.values).<0)
-        U = S.Z
-
-        (m, n) = size(U)
-        U11 = U[1:div(m, 2), 1:div(n,2)]
-        U21 = U[div(m,2)+1:m, 1:div(n,2)]
-        return U21/U11
-    end
-    function lqr(A, B, Q, R)
-        S = care(A, B, Q, R)
-        K = R\B'*S
-        return K
     end
 
 

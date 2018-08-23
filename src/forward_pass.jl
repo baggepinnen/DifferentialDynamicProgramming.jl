@@ -9,7 +9,7 @@
 function forward_pass(traj_new, x0,u,x,α,f,costfun,lims,diff)
     n         = size(x0,1)
     m,N       = size(u)
-    xnew      = Array{eltype(x0)}(n,N)
+    xnew      = Array{eltype(x0)}(undef,n,N)
     xnew[:,1] = x0
     unew      = copy(u)
     cnew      = zeros(N)
@@ -43,7 +43,7 @@ function forward_covariance(model, x, u, traj)
     Σ0       = R1 # TODO: I was lazy here
     ix = 1:n
     iu = n+1:n+m
-    sigmanew = Array{Float64}(n+m,n+m,N)
+    sigmanew = Array{Float64}(undef,n+m,n+m,N)
     sigmanew[ix,ix,1] = Σ0
     for i = 1:N-1
         K,Σ = traj.K[:,:,i], traj.Σ[:,:,i]
