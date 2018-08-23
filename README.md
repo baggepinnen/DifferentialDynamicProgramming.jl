@@ -25,11 +25,19 @@ All users of this package for academic purposes are encouraged to cite the origi
 ## Demo functions
 The following demo functions are provided
 
-`demo_linear()` To run the iLQG DDP algorithm on a simple linear problem
+```julia
+include(DifferentialDynamicProgramming.dir("src","demo_linear.jl")
+demo_linear()
+```
+To run the iLQG DDP algorithm on a simple linear problem
 
 `demoQP` To solve a demo quadratic program
 
-If Control.jl is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
+If `ControlSystems.jl` is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated.
+```julia
+include(DifferentialDynamicProgramming.dir("src","demo_pendcart.jl")
+demo_pendcart()
+```
 
 ## Usage
 ### Demo linear
@@ -100,6 +108,3 @@ If Control.jl is installed, there is an additional demo function `demo_pendcart(
 
 ![window](images/states_pendcart.png)
 ![window](images/control_pendcart.png)
-
-
-

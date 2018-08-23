@@ -1,9 +1,5 @@
-using ControlSystems
-export demo_pendcart
+using ControlSystems, Plots
 
-plotstuff_pendcart(args...) = println("Install package Plots.jl to plot results in the end of demo_pendcart")
-
-@require Plots begin
 function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
     cp = Plots.plot(layout=(1,3))
     sp = Plots.plot(x00',title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Simulation", layout=(2,2))
@@ -18,7 +14,7 @@ function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
     filter!(x->x>0,totalcost)
     Plots.plot!(cp, totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
 end
-end
+
 
 
 """
@@ -216,5 +212,4 @@ function demo_pendcart()
     plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
     println("Done")
 
-    return nothing
 end

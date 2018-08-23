@@ -57,10 +57,10 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
     debug("# initial state")
     x = clamp.(x0,lower,upper)
     LU = [lower upper]
-    LU[.!isfinite.(LU)] = NaN
+    LU[.!isfinite.(LU)] .= NaN
 
     debug("# initial objective value")
-    @show value    = (x'*g + 0.5*x'*H*x )[1]
+    @show value    = (x'g + 0.5x'H*x )[1]
 
     if print > 0
         @printf("==========\nStarting box-QP, dimension %-3d, initial value: %-12.3f\n",n, value)

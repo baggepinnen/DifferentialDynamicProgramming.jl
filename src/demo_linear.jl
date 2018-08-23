@@ -1,6 +1,5 @@
-plotstuff_linear(args...) = println("Install package Plots.jl to plot results in the end of demo_linear")
 
-@require Plots begin
+import Plots
 function plotstuff_linear(x,u,cost,totalcost)
     p = Plots.plot(layout=(2,2))
     Plots.plot!(p,x', title="State Trajectories", xlabel="Time step",legend=false, subplot=1, show=false)
@@ -8,7 +7,6 @@ function plotstuff_linear(x,u,cost,totalcost)
     Plots.plot!(p,u',title="Control signals", xlabel="Time step", subplot=3, show=false)
     Plots.plot!(p,totalcost,title="Total cost", xlabel="Iteration", subplot=4, show=false)
     Plots.gui()
-end
 end
 
 
