@@ -251,7 +251,7 @@ function graphics(x...)
     return 0
 end
 
-function back_pass_gps{T}(cx,cu,cxx::AbstractArray{T,3},cxu,cuu, fx::AbstractArray{T,3},fu,lims,x,u,kl_cost_terms) # quadratic timeVariant cost, linear time variant dynamics
+function back_pass_gps(cx,cu,cxx::AbstractArray{T,3},cxu,cuu, fx::AbstractArray{T,3},fu,lims,x,u,kl_cost_terms) where T # quadratic timeVariant cost, linear time variant dynamics
     m          = size(u,1)
     n,N        = size(fx,1,3)
     ηbracket = kl_cost_terms[2]

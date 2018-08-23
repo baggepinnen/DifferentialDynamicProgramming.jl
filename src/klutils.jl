@@ -194,7 +194,7 @@ mutable struct ADAMOptimizer{T,N}
     v::Array{T,N}
 end
 
-ADAMOptimizer{T,N}(g::AbstractArray{T,N}; α = 0.005,  β1 = 0.9, β2 = 0.999, ɛ = 1e-8, m=zeros(g), v=zeros(g)) = ADAMOptimizer{T,N}(α,  β1, β2, ɛ, m, v)
+ADAMOptimizer(g::AbstractArray{T,N}; α = 0.005,  β1 = 0.9, β2 = 0.999, ɛ = 1e-8, m=zeros(g), v=zeros(g)) where {T,N} = ADAMOptimizer{T,N}(α,  β1, β2, ɛ, m, v)
 
 """
     (a::ADAMOptimizer{T,N})(Θ::Array{T,N}, g::Array{T,N}, t::Number)

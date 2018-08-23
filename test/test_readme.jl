@@ -1,4 +1,4 @@
-using Base.Test
+using Test
 # make stable linear dynamics
 eye = DifferentialDynamicProgramming.eye
 costs = map(1:10) do MCiteration

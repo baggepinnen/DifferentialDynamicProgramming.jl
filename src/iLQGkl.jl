@@ -252,7 +252,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     #     verbosity > 0 && println("Cost (under model) increased, did not accept changes to u")
     # end
     traj_prev.k = k_old
-    any((divergence .> kl_step) .& (abs.(divergence - kl_step) .> 0.1*kl_step)) && warn("KL divergence too high for some time steps when done")
+    any((divergence .> kl_step) .& (abs.(divergence - kl_step) .> 0.1*kl_step)) && @warn("KL divergence too high for some time steps when done")
     verbosity > 0 && print_timing(trace,iter,t_start,cost,g_norm,mean(ηbracket[2,:]))
 
     return x, u, traj_new, Vx, Vxx, cost, trace
