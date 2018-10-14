@@ -193,13 +193,13 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     println("Entering iLQG function")
     # subplot(n=4,nc=2)
     x, u, L, Vx, Vxx, cost, trace = iLQG(f,cost_quadratic, df, x0, 0*u00,
-    lims = lims,
-    # plotFn =  x -> Plots.subplot!(x'),
-    regType = 2,
-    alpha = exp10.(range(0.2, stop=-3, length=6)),
+    lims      = lims,
+    # plotFn  = x -> Plots.subplot!(x'),
+    regType   = 2,
+    α         = exp10.(range(0.2, stop=-3, length=6)),
     verbosity = 3,
-    tol_fun  = 1e-7,
-    max_iter = 1000);
+    tol_fun   = 1e-7,
+    max_iter  = 1000);
 
     doplot && plotstuff_pendcart(x00, u00, x,u,cost00,cost,trace)
     println("Done")

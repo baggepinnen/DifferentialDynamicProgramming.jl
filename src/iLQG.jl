@@ -8,7 +8,7 @@ mutable struct Trace
     λ::Float64
     dλ::Float64
     cost::Float64
-    alpha::Float64
+    α::Float64
     grad_norm::Float64
     improvement::Float64
     reduce_ratio::Float64
@@ -110,12 +110,12 @@ the cost-to-go is V = fliplr(cumsum(fliplr(cost)))
 
 `trace` - a trace of various convergence-related values. One row for each
 iteration, the columns of trace are
-`[iter λ alpha g_norm Δcost z sum(cost) dλ]`
+`[iter λ α g_norm Δcost z sum(cost) dλ]`
 see below for details.
 
 # Keyword arguments
 `lims`,           [],            control limits\n
-`alpha`,          logspace(0,-3,11), backtracking coefficients\n
+`α`,              logspace(0,-3,11), backtracking coefficients\n
 `tol_fun`,         1e-7,          reduction exit criterion\n
 `tol_grad`,        1e-4,          gradient exit criterion\n
 `max_iter`,        500,           maximum iterations\n
@@ -140,7 +140,7 @@ year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}`
 """
 function iLQG(f,costfun,df, x0, u0;
     lims             = [],
-    alpha            = exp10.(range(0, stop=-3, length=11)),
+    α                = exp10.(range(0, stop=-3, length=11)),
     tol_fun          = 1e-7,
     tol_grad         = 1e-4,
     max_iter         = 500,
@@ -159,7 +159,7 @@ function iLQG(f,costfun,df, x0, u0;
     traj_prev        = 0
     )
     debug("Entering iLQG")
-    local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu,xnew,unew,costnew,g_norm,Vx,Vxx,dV
+    local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu,xnew,unew,costnew,g_norm,Vx,Vxx,dV,αi
     # --- initial sizes and controls
     n   = size(x0, 1)          # dimension of state vector
     m   = size(u0, 1)          # dimension of control vector
@@ -177,9 +177,9 @@ function iLQG(f,costfun,df, x0, u0;
     debug("Setting up initial trajectory")
     if size(x0,2) == 1 # only initial state provided
         diverge = true
-        for alphai ∈ alpha
-            debug("# test different backtracing parameters alpha and break loop when first succeeds")
-            x,un,cost, = forward_pass(traj_new,x0[:,1],alphai*u,[],1,f,costfun, lims,diff_fun)
+        for outer αi ∈ α
+            debug("# test different backtracing parameters α and break loop when first succeeds")
+            x,un,cost, = forward_pass(traj_new,x0[:,1],αi*u,[],1,f,costfun, lims,diff_fun)
             debug("# simplistic divergence test")
             if all(abs.(x) .< 1e8)
                 u = un
@@ -251,7 +251,7 @@ function iLQG(f,costfun,df, x0, u0;
 
         k, K = traj_new.k, traj_new.K
         #  check for termination due to small gradient
-        g_norm = mean(maximum(abs.(k) ./ (abs.(u)+1), dims=1))
+        g_norm = mean(maximum(abs.(k) ./ (abs.(u) .+ 1), dims=1))
         trace(:grad_norm, iter, g_norm)
         if g_norm <  tol_grad && λ < 1e-5 && satisfied
             verbosity > 0 && @printf("\nSUCCESS: gradient norm < tol_grad\n")
@@ -262,10 +262,10 @@ function iLQG(f,costfun,df, x0, u0;
         fwd_pass_done  = false
         if back_pass_done
             debug("#  serial backtracking line-search")
-            @elapsed(for alphai = alpha
-                xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,alphai,f,costfun, lims, diff_fun)
+            @elapsed(for outer αi = α
+                xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,αi,f,costfun, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
-                expected_reduction = -alphai*(dV[1] + alphai*dV[2])
+                expected_reduction = -αi*(dV[1] + αi*dV[2])
                 reduce_ratio = if expected_reduction > 0
                     Δcost/expected_reduction
                 else
@@ -307,7 +307,7 @@ function iLQG(f,costfun,df, x0, u0;
             end
             accepted_iter += 1
         else #  no cost improvement
-            alphai =  NaN
+            αi =  NaN
             dλ,λ  = max(dλ * λfactor,  λfactor), max(λ * dλ,  λmin)#  increase λ
             if verbosity > 1
                 @printf("%-12d%-12s%-12.3g%-12.3g%-12.3g%-12.1f\n",
@@ -322,7 +322,7 @@ function iLQG(f,costfun,df, x0, u0;
         #  update trace
         trace(:λ, iter, λ)
         trace(:dλ, iter, dλ)
-        trace(:alpha, iter, alphai)
+        trace(:α, iter, αi)
         trace(:improvement, iter, Δcost)
         trace(:cost, iter, sum(cost))
         trace(:reduce_ratio, iter, reduce_ratio)
