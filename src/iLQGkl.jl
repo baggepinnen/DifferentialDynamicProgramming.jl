@@ -101,7 +101,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             trace(:time_backward, iter, _t)
 
             if diverge > 0
-                ηbracket[2] .+= del0 # η increased, used in back_pass through kl_cost_terms
+                ηbracket[2] += del0 # η increased, used in back_pass through kl_cost_terms
                 # Higher η downweights the original Q function and upweights KL-cost terms
                 del0 *= 2
                 if verbosity > 2
@@ -124,7 +124,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         end
 
         #  check for termination due to small gradient
-        g_norm = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),dims=1))
+        g_norm = mean(maximum(abs.(traj_new.k) ./ (abs.(u) .+1),dims=1))
         trace(:grad_norm, iter, g_norm)
 
         # ====== STEP 3: Forward pass
@@ -179,7 +179,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             verbosity > 0 && @printf("\nEXIT: η > ηmax\n")
             break
         end
-        graphics(xnew,unew,cost,traj_new.K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
+        # graphics(xnew,unew,cost,traj_new.K,Vx,Vxx,fx,fxx,fu,fuu,trace[1:iter],0)
     end # !constrain_per_step
 
     if constrain_per_step # This implements the gradient descent procedure for η
@@ -216,7 +216,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             # println(maximum(constraint_violation), " ", extrema(η), " ", indmax(constraint_violation))
             # println(round.(constraint_violation,4))
             η                    .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
-            g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u)+1),dims=1))
+            g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u) .+1),dims=1))
             trace(:grad_norm, iter, g_norm)
             # @show maximum(constraint_violation)
             if all(divergence .< 2*kl_step) && mean(constraint_violation) < 0.1*kl_step[1]

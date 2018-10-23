@@ -20,7 +20,7 @@ mutable struct Trace
     Trace() = new(0,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.)
 end
 
-(t::MVHistory)(args...) = push!(t, args...)
+(t::MVHistory)(args...) = increment!(t, args...)
 
 """
     `GaussianPolicy{P}`
@@ -46,9 +46,9 @@ mutable struct GaussianPolicy{P}
     Σi::Array{P,3}
 end
 
-
+eye(P,n) = Matrix{P}(I,n,n)
 GaussianPolicy(P) = GaussianPolicy(0,0,0,emptyMat3(P),emptyMat2(P),emptyMat3(P),emptyMat3(P))
-GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat(3,[eye(P,m) for t=1:T]...),cat(3,[eye(P,m) for t=1:T]...))
+GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat([eye(P,m) for t=1:T]..., dims=3),cat([eye(P,m) for t=1:T]..., dims=3))
 Base.isempty(gp::GaussianPolicy) = gp.T == gp.n == gp.m == 0
 Base.length(gp::GaussianPolicy) = gp.T
 
@@ -276,7 +276,7 @@ function iLQG(f,costfun,df, x0, u0;
                     fwd_pass_done = true
                     break
                 end
-            end) |> Base.Fix1(trace,:time_forward)
+            end) |> x -> trace(:time_forward, iter, x)
 
         end
 

@@ -86,8 +86,8 @@ function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},
     K          = zeros(m,n,N)
     Vx         = zeros(n,N)
     Vxx        = zeros(n,n,N)
-    Quu        = Array{T}(m,m,N)
-    Quui       = Array{T}(m,m,N)
+    Quu        = Array{T}(undef,m,m,N)
+    Quui       = Array{T}(undef,m,m,N)
     dV         = [0., 0.]
     Vx[:,N]    = cx[:,N]
     Vxx[:,:,N] = cxx[:,:,N]
@@ -185,8 +185,8 @@ function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},
     K          = zeros(m,n,N)
     Vx         = zeros(n,N)
     Vxx        = zeros(n,n,N)
-    Quu        = Array{T}(m,m,N)
-    Quui       = Array{T}(m,m,N)
+    Quu        = Array{T}(undef,m,m,N)
+    Quui       = Array{T}(undef,m,m,N)
     dV         = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
@@ -253,7 +253,7 @@ end
 
 function back_pass_gps(cx,cu,cxx::AbstractArray{T,3},cxu,cuu, fx::AbstractArray{T,3},fu,lims,x,u,kl_cost_terms) where T # quadratic timeVariant cost, linear time variant dynamics
     m          = size(u,1)
-    n,N        = size(fx,1,3)
+    n,_,N      = size(fx)
     ηbracket = kl_cost_terms[2]
     η = isa(ηbracket,AbstractMatrix) ? ηbracket[2,N] : ηbracket[2]
     cxkl,cukl,cxxkl,cxukl,cuukl = kl_cost_terms[1]
@@ -268,8 +268,8 @@ function back_pass_gps(cx,cu,cxx::AbstractArray{T,3},cxu,cuu, fx::AbstractArray{
     K          = zeros(m,n,N)
     Vx         = zeros(n,N)
     Vxx        = zeros(n,n,N)
-    Quu        = Array{T}(m,m,N)
-    Quui       = Array{T}(m,m,N)
+    Quu        = Array{T}(undef,m,m,N)
+    Quui       = Array{T}(undef,m,m,N)
     dV         = [0., 0.]
 
     Vx[:,N]    = cx[:,N]
