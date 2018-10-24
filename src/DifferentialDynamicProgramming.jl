@@ -22,16 +22,15 @@ function __init__()
     @eval function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
         cp = Plots.plot(layout=(1,3))
         sp = Plots.plot(x00',title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Simulation", layout=(2,2))
-        Plots.plot!(cp,[u00' cost00[2:end]], title=["Control signal", "Cost"]', lab="Simulation", subplot=1)
-
         Plots.plot!(sp,x', title=["\$x_$(i)\$" for i=1:size(x00,1)]', lab="Optimized", xlabel="Time step", legend=true)
-        Plots.plot!(cp,u', legend=true, title="Control signal",lab="Optimized", subplot=1)
-        Plots.plot!(cp,cost[2:end], legend=true, title="Cost",lab="Optimized", xlabel="Time step", subplot=2)
 
-        totalcost = [ t.cost for t in otrace]
-        iters = sum(totalcost .> 0)
-        filter!(x->x>0,totalcost)
-        Plots.plot!(cp, totalcost, yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
+        Plots.plot!(cp,cost00, title="Cost", lab="Simulation", subplot=2)
+        Plots.plot!(cp,u', legend=true, title="Control signal",lab="Optimized", subplot=1)
+        Plots.plot!(cp,cost[2:end], legend=true, title="Cost",lab="Optimized", xlabel="Time step", subplot=2, yscale=:log10)
+        iters = sum(cost .> 0)
+        filter!(x->x>0,cost)
+        Plots.plot!(cp, get(otrace, :cost)[2], yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
+        Plots.plot(sp,cp)
         Plots.gui()
     end
 end
