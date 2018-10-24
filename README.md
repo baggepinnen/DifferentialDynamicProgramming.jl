@@ -7,6 +7,15 @@
 
 [![Coverage Status](https://coveralls.io/repos/github/baggepinnen/DifferentialDynamicProgramming.jl/badge.png?branch=master)](https://coveralls.io/github/baggepinnen/DifferentialDynamicProgramming.jl?branch=master)
 
+## Installation
+The package is registered and can be added with  
+`] add DifferentialDynamicProgramming`  
+To get the latest updates, install using  
+```
+] add https://github.com/baggepinnen/LTVModelsBase.jl
+add DifferentialDynamicProgramming#master
+```
+
 
 ## Demo functions
 The following demo functions are provided
@@ -28,7 +37,7 @@ n = 10          # state dimension
 m = 2           # control dimension
 A = randn(n,n)
 A = A-A'        # skew-symmetric = pure imaginary eigenvalues
-A = exp(h*A)   # discrete time
+A = exp(h*A)    # discrete time
 B = h*randn(n,m)
 
 # quadratic costs
@@ -72,17 +81,16 @@ end
 f(x,u,i)     = lin_dyn_f(x,u,A,B,Q,R)
 costfun(x,u) = lin_dyn_cost(x,u,Q)
 df(x,u)      = lin_dyn_df(x,u,Q,R)
-# plotFn(x)  = plot(squeeze(x,2)')
 
 # run the optimization
 
-@time x, u, L, Vx, Vxx, cost, otrace = iLQG(f,costfun ,df, x0, u0, lims=lims);
+@time x, u, L, Vx, Vxx, cost, otrace = iLQG(f, costfun ,df, x0, u0, lims=lims);
 ```
 
 
 
 ### Demo pendulum on cart
-If [ControlSystems.jl](https://github.com/JuliaControl/ControlSystems.jl) is installed, there is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated. In this example, regular LQG control fails in stabilizing the pendulum at the upright position due to control limitations. The DDP-based optimization solves this by letting the pendulum fall, and increases the energy in the pendulum during the fall such that it will stay upright after one revolution.
+There is an additional demo function `demo_pendcart()`, where a pendulum attached to a cart is simulated. In this example, regular LQG control fails in stabilizing the pendulum at the upright position due to control limitations. The DDP-based optimization solves this by letting the pendulum fall, and increases the energy in the pendulum during the fall such that it will stay upright after one revolution.
 
 ![window](images/states_pendcart.png)
 ![window](images/control_pendcart.png)
@@ -92,11 +100,13 @@ If [ControlSystems.jl](https://github.com/JuliaControl/ControlSystems.jl) is ins
 
 
 This code consists of a port and extensions of a MATLAB library provided by the autors of
+```
 BIBTeX:
 @INPROCEEDINGS{
-  author={Tassa, Y. and Mansard, N. and Todorov, E.},
-  booktitle={Robotics and Automation (ICRA), 2014 IEEE International Conference on},
-  title={Control-Limited Differential Dynamic Programming},
-  year={2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}
+  author    = {Tassa, Y. and Mansard, N. and Todorov, E.},
+  booktitle = {Robotics and Automation (ICRA), 2014 IEEE International Conference on},
+  title     = {Control-Limited Differential Dynamic Programming},
+  year      = {2014}, month={May}, doi={10.1109/ICRA.2014.6907001}}
   http://www.mathworks.com/matlabcentral/fileexchange/52069-ilqg-ddp-trajectory-optimization
   http://www.cs.washington.edu/people/postdocs/tassa/
+```
