@@ -51,8 +51,9 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     g = 9.82
     l = 0.35 # Length of pendulum
     h = 0.01 # Sample time
+    d = 0.1
     A = [0 1 0 0; # Linearlized system dynamics matrix, continuous time
-    g/l 0 0 0;
+    g/l -d 0 0;
     0 0 0 1;
     0 0 0 0]
     B = [0, -1/l, 0, 1]
@@ -66,14 +67,14 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
         dx[1] -= pi
         u = -(L*dx)[1]
         xd[1] = x[2]
-        xd[2] = -g/l * sin(x[1]) + u/l * cos(x[1])
+        xd[2] = -g/l * sin(x[1]) + u/l * cos(x[1]) - d*x[2]
         xd[3] = x[4]
         xd[4] = u
     end
 
     function fsys(t,x,u,xd)
         xd[1] = x[2]
-        xd[2] = -g/l * sin(x[1]) + u/l * cos(x[1])
+        xd[2] = -g/l * sin(x[1]) + u/l * cos(x[1]) - d*x[2]
         xd[3] = x[4]
         xd[4] = u
     end
@@ -81,7 +82,7 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     dfvec = zeros(4)
     function dfsys(x,u)
         dfvec[1] = x[1]+h*x[2]
-        dfvec[2] = x[2]+h*(-g/l*sin(x[1])+u[1]/l*cos(x[1]))
+        dfvec[2] = x[2]+h*(-g/l*sin(x[1])+u[1]/l*cos(x[1])- d*x[2])
         dfvec[3] = x[3]+h*x[4]
         dfvec[4] = x[4]+h*u[1]
         dfvec
@@ -89,12 +90,12 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
 
 
     function cost_quadratic(x,u)
-        d = (x.-goal)
+        local d = (x.-goal)
         0.5(d'*Q*d + u'R*u)[1]
     end
 
     function cost_quadratic(x::Matrix,u)
-        d = (x.-goal)
+        local d = (x.-goal)
         T = size(u,2)
         c = Vector{Float64}(undef,T+1)
         for t = 1:T
@@ -142,6 +143,7 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
         cuu          = [R]
         for ii = 1:I
             fxc[2,1,ii] = -g/l*cos(x[1,ii])-u[ii]/l*sin(x[1,ii])
+            fxc[2,2,ii] = -d
             fuc[2,1,ii] = cos(x[1,ii])/l
             ABd = exp([fxc[:,:,ii]*h  fuc[:,:,ii]*h; zeros(nu, D + nu)])# ZoH sampling
             fxd[:,:,ii] = ABd[1:D,1:D]
@@ -197,8 +199,10 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     # plotFn  = x -> Plots.subplot!(x'),
     regType   = 2,
     α         = exp10.(range(0.2, stop=-3, length=6)),
+    λmax      = 1e15,
     verbosity = 3,
-    tol_fun   = 1e-7,
+    tol_fun   = 1e-8,
+    tol_grad   = 1e-8,
     max_iter  = 1000);
 
     doplot && plotstuff_pendcart(x00, u00, x,u,cost00,cost,trace)
