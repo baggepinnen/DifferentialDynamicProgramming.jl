@@ -51,7 +51,7 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     g = 9.82
     l = 0.35 # Length of pendulum
     h = 0.01 # Sample time
-    d = 0.1
+    d = 0.99
     A = [0 1 0 0; # Linearlized system dynamics matrix, continuous time
     g/l -d 0 0;
     0 0 0 1;
