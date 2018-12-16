@@ -12,7 +12,7 @@ The package is registered and can be added with
 `] add DifferentialDynamicProgramming`  
 To get the latest updates, install using  
 ```
-] add https://github.com/baggepinnen/LTVModelsBase.jl
+] add https://github.com/baggepinnen/LinearTimeVaryingModelsBase.jl
 add DifferentialDynamicProgramming#master
 ```
 

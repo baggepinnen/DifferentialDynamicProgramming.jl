@@ -19,11 +19,11 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 deps = ["LinearAlgebra", "Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
-[[LTVModelsBase]]
+[[LinearTimeVaryingModelsBase]]
 deps = ["Parameters"]
 git-tree-sha1 = "4623f37a512b7e2a495ba1993c521e49188b545a"
 repo-rev = "master"
-repo-url = "https://github.com/baggepinnen/LTVModelsBase.jl/"
+repo-url = "https://github.com/baggepinnen/LinearTimeVaryingModelsBase.jl/"
 uuid = "52bd5b67-3fca-59a1-821b-f5f08aa0287b"
 version = "0.0.0"
 
