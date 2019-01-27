@@ -96,9 +96,7 @@ There is an additional demo function `demo_pendcart()`, where a pendulum attache
 ![window](images/control_pendcart.png)
 
 
-
-
-
+# Citing
 This code consists of a port and extensions of a MATLAB library provided by the autors of
 ```
 BIBTeX:
@@ -110,3 +108,20 @@ BIBTeX:
   http://www.mathworks.com/matlabcentral/fileexchange/52069-ilqg-ddp-trajectory-optimization
   http://www.cs.washington.edu/people/postdocs/tassa/
 ```
+
+The code above was extended with KL-divergence constrained optimization for the thesis
+[Bagge Carlson, F.](https://www.control.lth.se/staff/fredrik-bagge-carlson/), ["Machine Learning and System Identification for Estimation in Physical Systems"](https://lup.lub.lu.se/search/publication/ffb8dc85-ce12-4f75-8f2b-0881e492f6c0) (PhD Thesis 2018).
+```bibtex
+@thesis{bagge2018,
+  title        = {Machine Learning and System Identification for Estimation in Physical Systems},
+  author       = {Bagge Carlson, Fredrik},
+  keyword      = {Machine Learning,System Identification,Robotics,Spectral estimation,Calibration,State estimation},
+  month        = {12},
+  type         = {PhD Thesis},
+  number       = {TFRT-1122},
+  institution  = {Dept. Automatic Control, Lund University, Sweden},
+  year         = {2018},
+  url          = {https://lup.lub.lu.se/search/publication/ffb8dc85-ce12-4f75-8f2b-0881e492f6c0},
+}
+```
+
