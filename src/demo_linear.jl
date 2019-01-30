@@ -80,16 +80,16 @@ function demo_linear_kl(;kwargs...)
     lims = []            #ones(m,1)*[-1 1]*.6
 
     T    = 1000          # horizon
-    x    = ones(n)       # initial state
+    x0   = ones(n)       # initial state
     u    = .1*randn(m,T) # initial controls
 
     # optimization problem
     N    = T+1
-    fx   = A
-    fu   = B
-    cxx  = Q
-    cxu  = zeros(size(B))
-    cuu  = R
+    fx   = repeat(A,1,1,T)
+    fu   = repeat(B,1,1,T)
+    cxx  = repeat(Q,1,1,T)
+    cxu  = repeat(zeros(size(B)),1,1,T)
+    cuu  = repeat(R,1,1,T)
     function lin_dyn_df(x,u,Q,R)
         u[isnan.(u)] .= 0
         cx  = Q*x
@@ -102,10 +102,20 @@ function demo_linear_kl(;kwargs...)
         xnew = A*x + B*u
         return xnew
     end
-    lin_dyn_fT(x,Q) = 0.5*sum(x.*(Q*x))
-    f(x,u,i)   = lin_dyn_f(x,u,A,B,Q,R)
-    costfun(x,u) = 0.5*(sum(x.*(Q*x),1) + sum(u.*(R*u),1))[:]
-    df(x,u)  = lin_dyn_df(x,u,Q,R)
+    dyn = (x,u,i)   -> lin_dyn_f(x,u,A,B,Q,R)
+    costf = (x,u) -> 0.5*(sum(x.*(Q*x),dims=1) + sum(u.*(R*u),dims=1))[:]
+    diffdyn = (x,u)  -> lin_dyn_df(x,u,Q,R)
+
+    function rollout(u)
+        x = zeros(n,T)
+        x[:,1] = x0
+        for t = 1:T-1
+            x[:,t+1] = dyn(x[:,t],u[:,t],t)
+        end
+        x
+    end
+    x = rollout(u)
+    model = LinearTimeVaryingModelsBase.SimpleLTVModel(repeat(A,1,1,N),repeat(B,1,1,N),false)
     # plotFn(x)  = plot(squeeze(x,2)')
     traj = GaussianPolicy(Float64,T,n,m)
     # run the optimization
@@ -113,14 +123,14 @@ function demo_linear_kl(;kwargs...)
     outercosts = zeros(5)
     @time for iter = 1:5
         cost0 = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
-        x, u, traj, Vx, Vxx, cost, otrace = iLQGkl(f,costfun,df, x, u, traj, model; cost=cost0, lims=lims,kwargs...);
+        x, u, traj, Vx, Vxx, cost, otrace = iLQGkl(dyn,costf,diffdyn, x, traj, model; cost=cost0, lims=lims,kwargs...);
         totalcost = get(otrace, :cost)[2]
         outercosts[iter] = sum(totalcost)
         println("Outer loop: Cost = ", sum(cost))
     end
 
-
-
-    plotstuff_linear(x,u,totalcost,outercosts)
+    totalcost = get(otrace, :cost)[2]
+    plotstuff_linear(x,u,[cost],min.(totalcost,400))
+    # plotstuff_linear(x,u,totalcost,outercosts)
     x, u, traj, Vx, Vxx, cost, otrace
 end

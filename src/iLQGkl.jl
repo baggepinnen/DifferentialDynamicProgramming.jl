@@ -24,7 +24,7 @@ To solve the maximum entropy problem, use controller `controller(xi,i)  = u[:,i]
 """
 function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     constrain_per_step = false,
-    kl_step            = 0,
+    kl_step            = 1,
     lims               = [],
     tol_fun            = 1e-7,
     tol_grad           = 1e-4,

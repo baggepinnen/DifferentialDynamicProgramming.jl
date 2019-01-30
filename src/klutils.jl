@@ -101,15 +101,14 @@ end
 
 
 
-entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t])/2 for t = 1:traj.T) + traj.m*log(2π*e)/2
+entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t])/2 for t = 1:traj.T) + traj.m*log(2π)/2
 
 """
 new_η, satisfied, divergence = calc_η(xnew,xold,sigmanew,η, traj_new, traj_prev, kl_step)
 This Function caluculates the step size
 """
 function calc_η(xnew,xold,sigmanew,ηbracket, traj_new, traj_prev, kl_step::Number)
-    kl_step > 0 || (return (1., true,0))
-
+    kl_step > 0 || (return (ηbracket, true,0))
     divergence    = kl_div_wiki(xnew,xold,sigmanew, traj_new, traj_prev) |> mean
     constraint_violation = divergence - kl_step
     # Convergence check - constraint satisfaction.
@@ -131,8 +130,7 @@ function calc_η(xnew,xold,sigmanew,ηbracket, traj_new, traj_prev, kl_step::Num
 end
 
 function calc_η(xnew,xold,sigmanew,ηbracket, traj_new, traj_prev, kl_step::AbstractVector)
-    any(kl_step .> 0) || (return (1., true,0))
-
+    any(kl_step .> 0) || (return (ηbracket, true,0))
     divergence    = kl_div_wiki(xnew,xold,sigmanew, traj_new, traj_prev)
     if !isa(kl_step,AbstractVector)
         divergence = mean(divergence)
