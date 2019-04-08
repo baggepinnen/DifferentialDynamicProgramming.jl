@@ -1,5 +1,6 @@
-using Test, Statistics, LinearAlgebra
+using Test, Statistics, LinearAlgebra, Random
 # make stable linear dynamics
+Random.seed!(0)
 eye = DifferentialDynamicProgramming.eye
 costs = map(1:10) do MCiteration
     h    = .01  # time step
