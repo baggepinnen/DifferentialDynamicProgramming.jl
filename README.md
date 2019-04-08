@@ -10,12 +10,7 @@
 ## Installation
 The package is registered and can be added with  
 `] add DifferentialDynamicProgramming`  
-To get the latest updates, install using  
-```
-] add https://github.com/baggepinnen/LinearTimeVaryingModelsBase.jl
-add DifferentialDynamicProgramming#master
-```
-
+The latest version is formally compatible with Julia v1.1+ (but probably works well for julia v1.0 as well if you `dev` it).
 
 ## Demo functions
 The following demo functions are provided
@@ -124,4 +119,3 @@ The code above was extended with KL-divergence constrained optimization for the 
   url          = {https://lup.lub.lu.se/search/publication/ffb8dc85-ce12-4f75-8f2b-0881e492f6c0},
 }
 ```
-
