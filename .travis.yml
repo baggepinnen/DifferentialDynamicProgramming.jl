@@ -4,7 +4,7 @@ os:
   - linux
   - osx
 julia:
-  - 1.0
+  - 1.1
   - nightly
 notifications:
   email: false
@@ -14,6 +14,7 @@ git:
 ## uncomment the following lines to allow failures on nightly julia
 ## (tests will run but not make your overall status red)
 matrix:
+ fast_finish: true
  allow_failures:
  - julia: nightly
 # uncomment the following lines to override the default test script

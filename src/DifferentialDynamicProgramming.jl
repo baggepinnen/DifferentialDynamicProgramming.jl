@@ -1,7 +1,7 @@
 module DifferentialDynamicProgramming
 using LinearTimeVaryingModelsBase, Requires, ValueHistories, LinearAlgebra, Statistics, Printf
 const DEBUG = false # Set this flag to true in order to print debug messages
-# package code goes here
+
 
 export QPTrace, boxQP, demoQP, iLQG,iLQGkl, demo_linear, demo_linear_kl, demo_pendcart, GaussianPolicy
 
