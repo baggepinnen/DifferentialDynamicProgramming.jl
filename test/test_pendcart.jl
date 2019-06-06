@@ -123,7 +123,7 @@ g/l 0 0 0;
 0 0 0 1;
 0 0 0 0]
 B   = [0, -1/l, 0, 1]
-C   = eye(4) # Assume all states are measurable
+C   = Matrix{Float64}(I,4,4) # Assume all states are measurable
 D   = 4
 
 sys = ss(A,B,C,zeros(4))

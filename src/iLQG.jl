@@ -1,8 +1,8 @@
 import Base: length
-EmptyMat3 = Array{Float64}(undef, 0,0,0)
-EmptyMat2 = Array{Float64}(undef, 0,0)
-emptyMat3(P) = Array{P}(undef, 0,0,0)
-emptyMat2(P) = Array{P}(undef, 0,0)
+EmptyMat3 = [Array{Float64}(undef, 0,0)]
+EmptyMat2 = [Array{Float64}(undef, 0)]
+emptyMat3(P) = [Array{P}(undef, 0,0)]
+emptyMat2(P) = [Array{P}(undef, 0)]
 mutable struct Trace
     iter::Int64
     λ::Float64
@@ -30,25 +30,27 @@ end
 T::Int          # number of time steps
 n::Int          # State dimension
 m::Int          # Number of control inputs
-K::Array{P,3}   # Time-varying feedback gain ∈ R(n,m,T)
-k::Array{P,2}   # Open loop control signal  ∈ R(m,T)
-Σ::Array{P,3}   # Time-varying controller covariance  ∈ R(m,m,T)
-Σi::Array{P,3}  # The inverses of Σ
+K::Vector{<:AbstractMatrix}   # Time-varying feedback gain ∈ R(n,m;T)
+k::Vector{<:AbstractVector}   # Open loop control signal  ∈ R(m;T)
+Σ::Vector{<:AbstractMatrix}   # Time-varying controller covariance  ∈ R(m,m;T)
+Σi::Vector{<:AbstractMatrix}  # The inverses of Σ
 ```
 """
-mutable struct GaussianPolicy{P}
+mutable struct GaussianPolicy{MT1<:AbstractMatrix,MT2<:AbstractMatrix,VT<:AbstractVector}
     T::Int
     n::Int
     m::Int
-    K::Array{P,3}
-    k::Array{P,2}
-    Σ::Array{P,3}
-    Σi::Array{P,3}
+    K::Vector{MT1}
+    k::Vector{VT}
+    Σ::Vector{MT2}
+    Σi::Vector{MT2}
 end
 
 eye(P,n) = Matrix{P}(I,n,n)
 GaussianPolicy(P) = GaussianPolicy(0,0,0,emptyMat3(P),emptyMat2(P),emptyMat3(P),emptyMat3(P))
-GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat([eye(P,m) for t=1:T]..., dims=3),cat([eye(P,m) for t=1:T]..., dims=3))
+# GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat([eye(P,m) for t=1:T]..., dims=3),cat([eye(P,m) for t=1:T]..., dims=3))
+
+GaussianPolicy(P,T,n,m) = GaussianPolicy(0,0,0,zeros(SMatrix{m,n,P},T),zeros(SVector{m,P},T),zeros(SMatrix{m,m,P},T),zeros(SMatrix{m,m,P},T))
 Base.isempty(gp::GaussianPolicy) = gp.T == gp.n == gp.m == 0
 Base.length(gp::GaussianPolicy) = gp.T
 
@@ -162,10 +164,10 @@ function iLQG(f,costfun,df, x0, u0;
     local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu,xnew,unew,costnew,g_norm,Vx,Vxx,dV,αi
     # --- initial sizes and controls
     n   = size(x0, 1)          # dimension of state vector
-    m   = size(u0, 1)          # dimension of control vector
-    N   = size(u0, 2)          # number of state transitions
+    m   = size(u0[1], 1)          # dimension of control vector
+    N   = length(u0)          # number of state transitions
     u   = u0                   # initial control sequence
-    traj_new  = GaussianPolicy(Float64)
+    traj_new  = GaussianPolicy(Float64,N,n,m)
     # traj_prev = GaussianDist(Float64)
 
     # --- initialize trace data structure
@@ -175,19 +177,20 @@ function iLQG(f,costfun,df, x0, u0;
 
     # --- initial trajectory
     debug("Setting up initial trajectory")
-    if size(x0,2) == 1 # only initial state provided
+    if x0 isa AbstractVector # only initial state provided
         diverge = true
         for outer αi ∈ α
             debug("# test different backtracing parameters α and break loop when first succeeds")
-            x,un,cost, = forward_pass(traj_new,x0[:,1],αi*u,[],1,f,costfun, lims,diff_fun)
+            x,un,cost, = forward_pass(traj_new,x0,αi.*u,[],1,f,costfun, lims,diff_fun)
             debug("# simplistic divergence test")
-            if all(abs.(x) .< 1e8)
+            @show typeof(x)
+            if all(all(abs.(x) .< 1e8) for x in x)
                 u = un
                 diverge = false
                 break
             end
         end
-    elseif size(x0,2) == N
+    elseif length(x0) == N
         debug("# pre-rolled initial forward pass, initial traj provided")
         x        = x0
         diverge  = false
@@ -226,16 +229,12 @@ function iLQG(f,costfun,df, x0, u0;
             flg_change   = false
         end
         # Determine what kind of system we are dealing with
-        linearsys = isempty(fxx) && isempty(fxu) && isempty(fuu); debug("linear system: $linearsys")
+        linearsys = fxx === nothing && fxu === nothing && fuu === nothing; debug("linear system: $linearsys")
 
         # ====== STEP 2: backward pass, compute optimal control law and cost-to-go
         back_pass_done = false
         while !back_pass_done
-            _t = @elapsed diverge, traj_new,Vx, Vxx,dV = if linearsys
-                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,λ, regType, lims,x,u)
-            else
-                back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
-            end
+            _t = @elapsed diverge, traj_new,Vx, Vxx,dV = back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ, regType, lims,x,u)
             increment!(trace, :time_backward, iter, _t)
             iter == 1 && (traj_prev = traj_new) # TODO: set k μu to zero fir traj_prev
 
@@ -251,7 +250,9 @@ function iLQG(f,costfun,df, x0, u0;
 
         k, K = traj_new.k, traj_new.K
         #  check for termination due to small gradient
-        g_norm = mean(maximum(abs.(k) ./ (abs.(u) .+ 1), dims=1))
+        g_norm = mean(zip(k,u)) do (k,u)
+            maximum(abs.(k) ./ (abs.(u) .+ 1))
+        end
         trace(:grad_norm, iter, g_norm)
         if g_norm <  tol_grad && λ < 1e-5 && satisfied
             verbosity > 0 && @printf("\nSUCCESS: gradient norm < tol_grad\n")
@@ -263,7 +264,7 @@ function iLQG(f,costfun,df, x0, u0;
         if back_pass_done
             debug("#  serial backtracking line-search")
             @elapsed(for outer αi = α
-                xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,αi,f,costfun, lims, diff_fun)
+                xnew,unew,costnew = forward_pass(traj_new, x0 ,u, x,αi,f,costfun, lims, diff_fun)
                 Δcost    = sum(cost) - sum(costnew)
                 expected_reduction = -αi*(dV[1] + αi*dV[2])
                 reduce_ratio = if expected_reduction > 0

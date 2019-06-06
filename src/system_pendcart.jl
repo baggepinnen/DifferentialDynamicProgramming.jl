@@ -90,94 +90,89 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
 
 
     function cost_quadratic(x,u)
-        local d = (x.-goal)
+        local d = (x .- Ref(goal))
         0.5(d'*Q*d + u'R*u)[1]
     end
 
     function cost_quadratic(x::Matrix,u)
         local d = (x.-goal)
-        T = size(u,2)
+        T = length(u)
         c = Vector{Float64}(undef,T+1)
         for t = 1:T
-            c[t] = 0.5(d[:,t]'*Q*d[:,t] + u[:,t]'R*u[:,t])[1]
+            c[t] = 0.5(d[t]'*Q*d[t] + u[t]'R*u[t])[1]
         end
-        c[end] = cost_quadratic(x[:,end][:],[0.0])
+        c[end] = cost_quadratic(x[end],[0.0])
         return c
     end
 
-    cx = zeros(4,T)
-    cu = zeros(1,T)
-    cxu = zeros(D,1)
 
     function dcost_quadratic(x,u)
-        cx  .= Q*(x.-goal)
-        cu  .= R.*u
-        return cx,cu,cxu
+        cx  = Ref(Q) .* (x .- Ref(goal))
+        cu  = Ref(R) .*u
+        return cx,cu,zeros(D)
     end
 
 
     function lin_dyn_f(x,u,i)
-        u[isnan.(u)] .= 0
         f = dfsys(x,u)
     end
 
 
-    fxc           = Array{Float64}(undef,D,D,I)
-    fuc           = Array{Float64}(undef,D,1,I)
-    fxd           = Array{Float64}(undef,D,D,I)
-    fud           = Array{Float64}(undef,D,1,I)
-    for ii = 1:I
-        fxc[:,:,ii] = [0 1 0 0;
+
+        fxc = Float64[0 1 0 0;
         0 0 0 0;
         0 0 0 1;
         0 0 0 0]
-        fuc[:,:,ii] = [0, 0, 0, 1]
-    end
+        fuc = reshape(Float64[0, 0, 0, 1], 4,1)
+        fxc = [copy(fxc) for i = 1:N]
+        fuc = [copy(fuc) for i = 1:N]
+        fxd = deepcopy(fxc)
+        fud = deepcopy(fuc)
+
 
     function lin_dyn_df(x,u)
-        u[isnan.(u)] .= 0
-        D            = size(x,1)
-        nu,I         = size(u)
+        D            = length(x[1])
+        nu,I         = length(u[1]),length(u)
         cx,cu,cxu    = dcost_quadratic(x,u)
         cxx          = Q
-        cuu          = [R]
+        cuu          = fill(R,1,1)
         for ii = 1:I
-            fxc[2,1,ii] = -g/l*cos(x[1,ii])-u[ii]/l*sin(x[1,ii])
-            fxc[2,2,ii] = -d
-            fuc[2,1,ii] = cos(x[1,ii])/l
-            ABd = exp([fxc[:,:,ii]*h  fuc[:,:,ii]*h; zeros(nu, D + nu)])# ZoH sampling
-            fxd[:,:,ii] = ABd[1:D,1:D]
-            fud[:,:,ii] = ABd[1:D,D+1:D+nu]
+            fxc[ii][2,1] = -g/l*cos(x[ii][1])-u[ii][]/l*sin(x[ii][1])
+            fxc[ii][2,2] = -d
+            fuc[ii][2,1] = cos(x[ii][1])/l
+            ABd = exp([fxc[ii]*h  fuc[ii]*h; zeros(nu, D + nu)])# ZoH sampling
+            fxd[ii] = ABd[1:D,1:D]
+            fud[ii] = ABd[1:D,D+1:D+nu]
         end
-        fxx=fxu=fuu = []
+        fxx=fxu=fuu = nothing
         return fxd,fud,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     end
 
-    x = zeros(4,N)
-    u = zeros(1,T)
+    x = [zeros(4) for _ in 1:N]
+    u = [zeros(1) for _ in 1:T]
 
     """
     Simulate a pendulum on a cart using the non-linear equations
     """
     function simulate_pendcart(x0,L, dfsys, cost)
-        x[:,1] = x0
-        u[1] = 0
+        x[1] = x0
+        u[1] .= 0
         for t = 2:T
-            dx     = copy(x[:,t-1])
+            dx     = copy(x[t-1])
             dx[1] -= pi
-            u[t]   = -(L*dx)[1]
+            u[t]   .= -(L*dx)
             if !isempty(lims)
-                u[t]   = clamp(u[t],lims[1],lims[2])
+                clamp!(u[t],lims[1],lims[2])
             end
-            x[:,t] = dfsys(x[:,t-1],u[t])
+            x[t] = dfsys(x[t-1],u[t])
         end
-        dx      = copy(x[:,T])
+        dx      = copy(x[T])
         dx[1]  -= pi
         uT      = -(L*dx)[1]
         if !isempty(lims)
             uT   = clamp(uT,lims[1],lims[2])
         end
-        x[:,T+1] = dfsys(x[:,T],uT)
+        x[T+1] = dfsys(x[T],uT)
         c = cost(x,u)
 
         return x, u, c

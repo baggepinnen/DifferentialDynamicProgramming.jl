@@ -1,12 +1,14 @@
 module DifferentialDynamicProgramming
-using LinearTimeVaryingModelsBase, Requires, ValueHistories, LinearAlgebra, Statistics, Printf
+using LinearTimeVaryingModelsBase, Requires, ValueHistories, LinearAlgebra, Statistics, Printf, StaticArrays
+using MacroTools: @capture, postwalk, prewalk
 const DEBUG = false # Set this flag to true in order to print debug messages
 
 
-export QPTrace, boxQP, demoQP, iLQG,iLQGkl, demo_linear, demo_linear_kl, demo_pendcart, GaussianPolicy
+export QPTrace, boxQP, demoQP, iLQG,iLQGkl, demo_linear, demo_linear_kl, demo_pendcart, GaussianPolicy, tosvec
 
-
+tosvec(x) = reinterpret(SVector{size(x,1),eltype(x)}, x)[:]
 eye(n) = Matrix{Float64}(I,n,n)
+Base.strides(::SArray{Tuple{i,j}}) where {i,j} = (1,i)
 
 function __init__()
     @require Plots="91a5bcdd-55d7-5caf-9e0b-520d859cae80" begin

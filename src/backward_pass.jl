@@ -1,32 +1,86 @@
 choleskyvectens(a,b) = permutedims(sum(a.*b,1), [3 2 1])
 
-macro setupQTIC()
-    quote
-        m          = size(u,1)
-        n,_,N        = size(fx)
 
-        @assert size(cx) == (n, N) "size(cx) should be (n, N)"
-        @assert size(cu) == (m, N) "size(cu) should be (m, N)"
-        @assert size(cxx) == (n, n) "size(cxx) should be(n, n) "
-        @assert size(cxu) == (n, m) "size(cxu) should be(n, m) "
+getmatindex(x,i) = x[i]
+getmatindex(x::AbstractArray{<:Number},i) = x # In this case the array is constatnt over time
+getmatindex(x::AbstractVector{<:AbstractArray},i) = x[i] # Time varying array
 
-        k          = zeros(m,N)
-        K          = zeros(m,n,N)
-        Vx         = zeros(n,N)
-        Vxx        = zeros(n,n,N)
-        Quu        = Array{T}(undef,m,m,N)
-        Quui       = Array{T}(undef,m,m,N)
-        dV         = [0., 0.]
-
-        Vx[:,N]    = cx[:,N]
-        Vxx[:,:,N] = cxx
-        Quu[:,:,N] = cuu
-        diverge    = 0
-    end |> esc
+macro matviews(ex)
+    ex = prewalk(ex) do ex
+        @capture(ex, a_[i_] = rhs_) && (return :(__protect__($a,$i) = $rhs))
+        @capture(ex, a_[i_] += rhs_) && (return :(__protect__($a,$i) += $rhs))
+        @capture(ex, a_[i_]) && (return :(getmatindex($a,$i)))
+        ex
+    end
+    ex = prewalk(ex) do ex
+        @capture(ex, __protect__(a_,i_) = rhs_) && (return :($a[$i] = $rhs))
+        @capture(ex, __protect__(a_,i_) += rhs_) && (return :($a[$i] += $rhs))
+        ex
+    end
+    esc(ex)
 end
 
-macro end_backward_pass()
-    quote
+@macroexpand @matviews begin
+    dV         = dV + [k_i'Qu; .5*k_i'Quu[i]*k_i]
+    Vx[i]    = Qx + K_i'Quu[i]*k_i + K_i'Qu + Qux'k_i
+    Qu  = cu[i]      + fu[i]'Vx[i+1]
+    Qx  = cx[i]      + fx[i]'Vx[i+1]
+    Qux = cxu[i]'  + fu[i]'Vxx[i+1]*fx[i]
+    fxuVx = vectens(Vx[i+1],fxu[i])
+    Qux   = Qux + fxuVx
+    Quu[i] = cuu[i]   + fu[i]'Vxx[i+1]*fu[i]
+    fuuVx = vectens(Vx[i+1],fuu[i])
+    Quu[i] += fuuVx
+end
+
+Base.zeros(::Type{Matrix{T}}, n::Int) where T = [zeros(T,0,0) for _ in 1:n]
+Base.zeros(::Type{Vector{T}}, n::Int) where T = [T[] for _ in 1:n]
+
+function back_pass(cx,cu,cxx,cxu,cuu,fx,fu,fxx,fxu,fuu,λ,regType,lims,x,u) # nonlinear time variant
+    m,N        = length(u[1]),length(u)
+    length(cx) == N || throw(ArgumentError("cx must be the same length as u"))
+    @matviews begin
+        n      = length(cx[1])
+        k      = zeros(typeof(cu[1]), N)
+        K      = zeros(typeof(copy(fu[1]')), N)
+        Vx     = zeros(typeof(cx[1]), N)
+        Vxx    = zeros(typeof(fx[1]), N)
+        Quu    = zeros(typeof(cuu[1]), N)
+        Quui   = zeros(typeof(cuu[1]), N)
+        dV     = @SVector [0., 0.]
+        Vx[N]  = cx[N]
+        Vxx[N] = cxx[N]
+        Quu[N] = cuu[N]
+        k[N]   = 0*cu[N]
+        K[N]   = 0*fu[N]'
+    end
+
+    diverge  = 0
+    for i = N-1:-1:1
+        @matviews begin
+            Qu  = cu[i]      + fu[i]'Vx[i+1]
+            Qx  = cx[i]      + fx[i]'Vx[i+1]
+            Qux = cxu[i]'  + fu[i]'Vxx[i+1]*fx[i]
+            if !(fxu === nothing)
+                fxuVx = vectens(Vx[i+1],fxu[i])
+                Qux   = Qux + fxuVx
+            end
+
+            Quu[i] = cuu[i]   + fu[i]'Vxx[i+1]*fu[i]
+            if !(fuu === nothing)
+                fuuVx = vectens(Vx[i+1],fuu[i])
+                Quu[i] += fuuVx
+            end
+
+            Qxx = cxx[i] + fx[i]'Vxx[i+1]*fx[i]
+            fxx === nothing || (Qxx .+= vectens(Vx[i+1],fxx[i]))
+            Vxx_reg = Vxx[i+1] + (regType == 2 ? λ*I : 0*I)
+            Qux_reg = cxu[i]'  + fu[i]'Vxx_reg*fx[i]
+            fxu === nothing || (Qux_reg .+= fxuVx)
+            QuuF = cuu[i]  + fu[i]'Vxx_reg*fu[i] + (regType == 1 ? λ*I : 0*I)
+            fuu === nothing || (QuuF .+= fuuVx)
+        end
+
         QuF = Qu
         if isempty(lims) || lims[1,1] > lims[1,2]
             # debug("#  no control limits: Cholesky decomposition, check for non-PD")
@@ -35,6 +89,7 @@ macro end_backward_pass()
                 R = cholesky(Hermitian(QuuF))
             catch
                 diverge  = i
+                println("Failed chol")
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
             end
             # debug("#  find control law")
@@ -42,209 +97,41 @@ macro end_backward_pass()
             K_i = -(R\Qux_reg)
         else
             # debug("#  solve Quadratic Program")
-            lower = lims[:,1]-u[:,i]
-            upper = lims[:,2]-u[:,i]
+            lower = lims[:,1]-u[i]
+            upper = lims[:,2]-u[i]
             local k_i,result,free
             try
-                k_i,result,R,free = boxQP(QuuF,QuF,lower,upper,k[:,min(i+1,N-1)])
+                k_i,result,R,free = boxQP(QuuF,QuF,lower,upper,k[min(i+1,N-1)])
             catch
                 result = 0
             end
             if result < 1
                 diverge  = i
+                println("Failed boxQP")
                 return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx, dV
             end
-            K_i  = zeros(m,n)
+            K_i  = similar(K[i])
             if any(free)
                 Lfree         = -R\(R'\Qux_reg[free,:])
                 K_i[free,:]   = Lfree
             end
         end
         # debug("#  update cost-to-go approximation")
-        dV         = dV + [k_i'Qu; .5*k_i'Quu[:,:,i]*k_i]
-        Vx[:,i]    = Qx + K_i'Quu[:,:,i]*k_i + K_i'Qu + Qux'k_i
-        Vxx[:,:,i] = Qxx + K_i'Quu[:,:,i]*K_i + K_i'Qux + Qux'K_i
-        Vxx[:,:,i] = .5*(Vxx[:,:,i] + Vxx[:,:,i]')
+        @matviews begin
+            dV    += [k_i'Qu; .5*k_i'Quu[i]*k_i]
+            Vx[i]  = Qx + K_i'Quu[i]*k_i + K_i'Qu + Qux'k_i
+            Vxx[i] = Qxx + K_i'Quu[i]*K_i + K_i'Qux + Qux'K_i
+            Vxx[i] = .5*(Vxx[i] + Vxx[i]')
+        end
 
         # debug("# save controls/gains")
-        k[:,i]   = k_i
-        K[:,:,i] = K_i
-
-    end |> esc
-end
-
-function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) where T # nonlinear time variant
-
-    m,N        = size(u)
-    n          = size(cx,1)
-    @assert size(cx) == (n, N)
-    @assert size(cu) == (m, N)
-    @assert size(cxx) == (n, n, N)
-    @assert size(cxu) == (n, m, N)
-    @assert size(cuu) == (m, m, N)
-    k          = zeros(m,N)
-    K          = zeros(m,n,N)
-    Vx         = zeros(n,N)
-    Vxx        = zeros(n,n,N)
-    Quu        = Array{T}(undef,m,m,N)
-    Quui       = Array{T}(undef,m,m,N)
-    dV         = [0., 0.]
-    Vx[:,N]    = cx[:,N]
-    Vxx[:,:,N] = cxx[:,:,N]
-    Quu[:,:,N] = cuu[:,:,N]
-
-    diverge  = 0
-    for i = N-1:-1:1
-        Qu  = cu[:,i]      + fu[:,:,i]'Vx[:,i+1]
-        Qx  = cx[:,i]      + fx[:,:,i]'Vx[:,i+1]
-        Qux = cxu[:,:,i]'  + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        if !isempty(fxu)
-            fxuVx = vectens(Vx[:,i+1],fxu[:,:,:,i])
-            Qux   = Qux + fxuVx
-        end
-
-        Quu[:,:,i] = cuu[:,:,i]   + fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
-        if !isempty(fuu)
-            fuuVx = vectens(Vx[:,i+1],fuu[:,:,:,i])
-            Quu[:,:,i] .+= fuuVx
-        end
-
-        Qxx = cxx[:,:,i] + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        isempty(fxx) || (Qxx .+= vectens(Vx[:,i+1],fxx[:,:,:,i]))
-        Vxx_reg = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
-        Qux_reg = cxu[:,:,i]'  + fu[:,:,i]'Vxx_reg*fx[:,:,i]
-        isempty(fxu) || (Qux_reg .+= fxuVx)
-        QuuF = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
-        isempty(fuu) || (QuuF .+= fuuVx)
-
-        @end_backward_pass
+        k[i] = k_i
+        K[i] = K_i
     end
 
     return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
 end
 
-
-function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,fxx,fxu,fuu,λ,regType,lims,x,u) where T # quadratic timeinvariant cost, dynamics nonlinear time variant
-
-    @setupQTIC
-
-    for i = N-1:-1:1
-        Qu  = cu[:,i]   + fu[:,:,i]'Vx[:,i+1]
-        Qx  = cx[:,i]   + fx[:,:,i]'Vx[:,i+1]
-        Qux = cxu' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        if !isempty(fxu)
-            fxuVx = vectens(Vx[:,i+1],fxu[:,:,:,i])
-            Qux   = Qux + fxuVx
-        end
-
-        Quu[:,:,i] = cuu + fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
-        if !isempty(fuu)
-            fuuVx = vectens(Vx[:,i+1],fuu[:,:,:,i])
-            Quu[:,:,i]   = Quu[:,:,i] + fuuVx
-        end
-        Qxx = cxx  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        isempty(fxx) || (Qxx .+= vectens(Vx[:,i+1],fxx[:,:,:,i]))
-        Vxx_reg = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
-        Qux_reg = cxu'   + fu[:,:,i]'Vxx_reg*fx[:,:,i]
-        isempty(fxu) || (Qux_reg .+= fxuVx)
-        QuuF = cuu  + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
-        isempty(fuu) || (QuuF .+= fuuVx)
-        @end_backward_pass
-    end
-    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
-end
-
-function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) where T # quadratic timeinvariant cost, linear time variant dynamics
-    @setupQTIC
-    for i = N-1:-1:1
-        Qu         = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
-        Qx         = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
-        Qux        = cxu' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        Quu[:,:,i] = cuu + fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
-        Qxx        = cxx + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        Vxx_reg    = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
-        Qux_reg    = cxu' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
-        QuuF       = cuu + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
-        @end_backward_pass
-    end
-
-    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
-end
-
-function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) where T # quadratic timeVariant cost, linear time variant dynamics
-    m          = size(u,1)
-    n,N        = size(fx,1,3)
-
-    @assert size(cx) == (n, N)
-    @assert size(cu) == (m, N)
-    @assert size(cxx) == (n, n, N)
-    @assert size(cxu) == (n, m, N)
-    @assert size(cuu) == (m, m, N)
-
-    k          = zeros(m,N)
-    K          = zeros(m,n,N)
-    Vx         = zeros(n,N)
-    Vxx        = zeros(n,n,N)
-    Quu        = Array{T}(undef,m,m,N)
-    Quui       = Array{T}(undef,m,m,N)
-    dV         = [0., 0.]
-
-    Vx[:,N]    = cx[:,N]
-    Vxx[:,:,N] = cxx[:,:,end]
-    Quu[:,:,N] = cuu[:,:,N]
-
-    diverge    = 0
-    for i = N-1:-1:1
-        Qu          = cu[:,i] + fu[:,:,i]'Vx[:,i+1]
-        Qx          = cx[:,i] + fx[:,:,i]'Vx[:,i+1]
-        Vxx_reg     = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
-        Qux_reg     = cxu[:,:,i]' + fu[:,:,i]'Vxx_reg*fx[:,:,i]
-        QuuF        = cuu[:,:,i]  + fu[:,:,i]'Vxx_reg*fu[:,:,i] .+ (regType == 1 ? λ*eye(m) : 0)
-        Qux         = cxu[:,:,i]' + fu[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        Quu[:,:,i] .= cuu[:,:,i] .+ fu[:,:,i]'Vxx[:,:,i+1]*fu[:,:,i]
-        Qxx         = cxx[:,:,i]  + fx[:,:,i]'Vxx[:,:,i+1]*fx[:,:,i]
-        @end_backward_pass
-    end
-
-    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
-end
-
-function back_pass(cx,cu,cxx::AbstractArray{T,2},cxu,cuu,fx::AbstractMatrix{T},fu,λ,regType,lims,x,u) where T # cost quadratic and cost and LTI dynamics
-
-    m,N = size(u)
-    n   = size(fx,1)
-    @assert size(cx) == (n, N)
-    @assert size(cu) == (m, N)
-    @assert size(cxx) == (n, n)
-    @assert size(cxu) == (n, m)
-    @assert size(cuu) == (m, m)
-    k   = zeros(m,N)
-    K   = zeros(m,n,N)
-    Vx  = zeros(n,N)
-    Vxx = zeros(n,n,N)
-    Quu = Array{T}(undef,m,m,N)
-    Quui = Array{T}(undef,m,m,N)
-    dV  = [0., 0.]
-
-    Vx[:,N]    = cx[:,N]
-    Vxx[:,:,N] = cxx
-    Quu[:,:,N] = cuu
-
-    diverge    = 0
-    for i = N-1:-1:1
-        Qu         = cu[:,i] + fu'Vx[:,i+1]
-        Qx         = cx[:,i] + fx'Vx[:,i+1]
-        Qux        = cxu' + fu'Vxx[:,:,i+1]*fx
-        Quu[:,:,i] = cuu + fu'Vxx[:,:,i+1]*fu
-        Qxx        = cxx + fx'Vxx[:,:,i+1]*fx
-        Vxx_reg    = Vxx[:,:,i+1] .+ (regType == 2 ? λ*eye(n) : 0)
-        Qux_reg    = cxu' + fu'Vxx_reg*fx
-        QuuF       = cuu + fu'Vxx_reg*fu .+ (regType == 1 ? λ*eye(m) : 0)
-        @end_backward_pass
-    end
-
-    return diverge, GaussianPolicy(N,n,m,K,k,Quui,Quu), Vx, Vxx,dV
-end
 
 
 function graphics(x...)

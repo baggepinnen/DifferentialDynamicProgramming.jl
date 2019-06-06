@@ -1,52 +1,50 @@
-using Test, Statistics, LinearAlgebra, Random
+using Test, Statistics, LinearAlgebra, Random, DifferentialDynamicProgramming
 # make stable linear dynamics
 Random.seed!(0)
 eye = DifferentialDynamicProgramming.eye
-costs = map(1:10) do MCiteration
-    h    = .01  # time step
-    n    = 10   # state dimension
-    m    = 2    # control dimension
-    A    = randn(n,n)
+h    = .01  # time step
+n    = 10   # state dimension
+m    = 2    # control dimension
+# control limits
+lims = []# ones(m,1)*[-1 1]*.6
+
+T    = 1000             # horizon
+# quadratic costs
+const Q    = SMatrix{n,n,Float64}(h*eye(n))
+const R    = SMatrix{m,m,Float64}(.1*h*eye(m))
+
+@time costs = map(1:10) do MCiteration
+    A    = @SMatrix randn(n,n)
     A    = A-A' # skew-symmetric = pure imaginary eigenvalues
     A    = exp(h*A)        # discrete time
-    B    = h*randn(n,m)
+    B    = h* @SMatrix(randn(n,m))
 
-    # quadratic costs
-    Q    = h*eye(n)
-    R    = .1*h*eye(m)
 
-    # control limits
-    lims = []# ones(m,1)*[-1 1]*.6
-
-    T    = 1000             # horizon
-    x0   = ones(n,1)        # initial state
-    u0   = .1*randn(m,T)    # initial controls
+    x0   = ones(n)        # initial state
+    u0   = .1*randn(m,T) |> tosvec    # initial controls
 
     # optimization problem
     N    = T+1
     fx   = A
     fu   = B
     cxx  = Q
-    cxu  = zeros(size(B))
+    cxu  = 0*B
     cuu  = R
 
     # Specify dynamics functions
     function lin_dyn_df(x,u,Q,R)
-        u[isnan.(u)] .= 0
-        cx  = Q*x
-        cu  = R*u
-        fxx=fxu=fuu = []
+        cx  = Ref(Q) .* x
+        cu  = Ref(R) .* u
+        fxx=fxu=fuu = nothing
         return fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu
     end
     function lin_dyn_f(x,u,A,B)
-        u[isnan.(u)] .= 0
         xnew = A*x + B*u
         return xnew
     end
 
     function lin_dyn_cost(x,u,Q)
-        c = 0.5*sum(x.*(Q*x)) + 0.5*sum(u.*(R*u))
-        return c
+        0.5*sum(x'Q*x + u'R*u for (x,u) in zip(x,u))
     end
 
     f(x,u,i)     = lin_dyn_f(x,u,A,B)
@@ -68,3 +66,8 @@ end
 @test maximum(costs) < 25 # This should be the case most of the times
 @test mean(costs) < 10 # This should be the case most of the times
 @test minimum(costs) < 5 # This should be the case most of the times
+
+
+
+# 8.136281 seconds (13.75 M allocations: 2.661 GiB, 13.57% gc time)
+# 2.174562 seconds (2.90 M allocations: 157.990 MiB, 5.06% gc time)
