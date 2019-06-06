@@ -183,7 +183,6 @@ function iLQG(f,costfun,df, x0, u0;
             debug("# test different backtracing parameters α and break loop when first succeeds")
             x,un,cost, = forward_pass(traj_new,x0,αi.*u,[],1,f,costfun, lims,diff_fun)
             debug("# simplistic divergence test")
-            @show typeof(x)
             if all(all(abs.(x) .< 1e8) for x in x)
                 u = un
                 diverge = false
