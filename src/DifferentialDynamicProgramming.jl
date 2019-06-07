@@ -6,7 +6,9 @@ const DEBUG = false # Set this flag to true in order to print debug messages
 
 export QPTrace, boxQP, demoQP, iLQG,iLQGkl, demo_linear, demo_linear_kl, demo_pendcart, GaussianPolicy, tosvec
 
-tosvec(x) = reinterpret(SVector{size(x,1),eltype(x)}, x)[:]
+tosvec(x::AbstractMatrix{<:Number}) = reinterpret(SVector{size(x,1),eltype(x)}, x)[:]
+tosvec(x::AbstractVector{<:Number}) = SVector{length(x),eltype(x)}(x)
+tosmat(x::AbstractMatrix{<:Number}) = SMatrix{size(x,1),size(x,2),eltype(x)}(x)
 eye(n) = Matrix{Float64}(I,n,n)
 Base.strides(::SArray{Tuple{i,j}}) where {i,j} = (1,i)
 
@@ -16,7 +18,7 @@ function __init__()
     @eval function plotstuff_linear(x,u,cost,totalcost)
         p = Plots.plot(layout=(2,2))
         Plots.plot!(p,reduce(hcat,x)', title="State Trajectories", xlabel="Time step",legend=false, subplot=1, show=false)
-        Plots.plot!(p,cost,c=:black,linewidth=3, title="Cost", xlabel="Time step", subplot=2, show=false)
+        Plots.hline!(p,cost,c=:black,linewidth=3, title="Cost", xlabel="Time step", subplot=2, show=false)
         Plots.plot!(p,reduce(hcat,u)',title="Control signals", xlabel="Time step", subplot=3, show=false)
         Plots.plot!(p,totalcost,title="Total cost", xlabel="Iteration", subplot=4, show=false)
         Plots.gui()

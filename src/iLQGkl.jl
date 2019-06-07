@@ -46,8 +46,8 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
     # --- initial sizes and controls
     u            = copy(traj_prev.k) # initial control sequence
     n            = size(x0, 1) # dimension of state vector
-    m,N          = size(u) # dimension of control vector and number of state transitions
-    traj_new     = GaussianPolicy(Float64)
+    m,N          = length(u[1]),length(u) # dimension of control vector and number of state transitions
+    traj_new     = GaussianPolicy(Float64, N,n,m)
     k_old = copy(traj_prev.k)
     traj_prev.k *= 0 # We are adding new k to u, so must set this to zero for correct kl calculations
     ηbracket     = copy(ηbracket) # Because we do changes in this Array
@@ -62,7 +62,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
 
     # --- initial trajectory
     debug("Checking initial trajectory")
-    if size(x0,2) == N
+    if x0 isa Vector{<:AbstractVector}
         debug("# pre-rolled initial forward pass, initial traj provided")
         x        = x0
         diverge  = false
@@ -124,14 +124,16 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
         end
 
         #  check for termination due to small gradient
-        g_norm = mean(maximum(abs.(traj_new.k) ./ (abs.(u) .+1),dims=1))
+        g_norm = mean(zip(traj_new.k,u)) do (k,u)
+            maximum(abs.(k) ./ (abs.(u) .+ 1))
+        end
         trace(:grad_norm, iter, g_norm)
 
         # ====== STEP 3: Forward pass
 
         _t = @elapsed begin
             # debug("#  entering forward_pass")
-            xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
+            xnew,unew,costnew = forward_pass(traj_new, x0[1] ,u, x,1,dynamics,costfun, lims, diff_fun)
             sigmanew = forward_covariance(model, x, u, traj_new)
             traj_new.k .+= traj_prev.k # unew = k_new + k_old + Knew*Δx, this doesn't matter since traj_prev.k set to 0 above
             Δcost    = sum(cost) - sum(costnew)
@@ -202,7 +204,7 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
                 end
             end
 
-            xnew,unew,costnew = forward_pass(traj_new, x0[:,1] ,u, x,1,dynamics,costfun, lims, diff_fun)
+            xnew,unew,costnew = forward_pass(traj_new, x0[1] ,u, x,1,dynamics,costfun, lims, diff_fun)
             sigmanew = forward_covariance(model, x, u, traj_new)
             traj_new.k .+= traj_prev.k # unew = k_new + k_old + Knew*Δx
             Δcost                 = sum(cost) - sum(costnew)
@@ -216,7 +218,9 @@ function iLQGkl(dynamics,costfun,derivs, x0, traj_prev, model;
             # println(maximum(constraint_violation), " ", extrema(η), " ", indmax(constraint_violation))
             # println(round.(constraint_violation,4))
             η                    .= clamp.(η, ηbracket[1,:], ηbracket[3,:])
-            g_norm                = mean(maximum(abs.(traj_new.k) ./ (abs.(u) .+1),dims=1))
+            g_norm                = mean(zip(traj_new.k,u)) do (k,u)
+                maximum(abs.(k) ./ (abs.(u) .+ 1))
+            end
             trace(:grad_norm, iter, g_norm)
             # @show maximum(constraint_violation)
             if all(divergence .< 2*kl_step) && mean(constraint_violation) < 0.1*kl_step[1]

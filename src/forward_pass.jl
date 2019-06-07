@@ -44,14 +44,14 @@ function forward_covariance(model, x, u, traj)
     Σ0       = R1 # TODO: I was lazy here
     ix = 1:n
     iu = n+1:n+m
-    sigmanew = Array{Float64}(undef,n+m,n+m,N)
-    sigmanew[ix,ix,1] = Σ0
+    sigmanew = [Array{Float64}(undef,n+m,n+m) for _ in 1:N]
+    sigmanew[1][ix,ix] = Σ0
     for i = 1:N-1
-        K,Σ = traj.K[i], traj.Σ[:,:,i]
-        sigmanew[ix,ix,i+1] = fx[i]*sigmanew[ix,ix,i]*fx[i]' + R1 # Iterate dLyap forward
-        sigmanew[iu,ix,i] = K*sigmanew[ix,ix,i]
-        sigmanew[ix,iu,i] = sigmanew[ix,ix,i]*K'
-        sigmanew[iu,iu,i] = K*sigmanew[ix,ix,i]*K' + Σ
+        K,Σ = traj.K[i], traj.Σ[i]
+        sigmanew[i+1][ix,ix] = fx[i]*sigmanew[i][ix,ix]*fx[i]' + R1 # Iterate dLyap forward
+        sigmanew[i][iu,ix] = K*sigmanew[i][ix,ix]
+        sigmanew[i][ix,iu] = sigmanew[i][ix,ix]*K'
+        sigmanew[i][iu,iu] = K*sigmanew[i][ix,ix]*K' + Σ
     end
     sigmanew
 end

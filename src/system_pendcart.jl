@@ -26,7 +26,7 @@ end
 
 
 """
-    demo_pendcart(;kwargs...)
+demo_pendcart(;kwargs...)
 
 Run the iLQG Function to find an optimal trajectory For the "pendulum on a cart system". Requires package ControlSystems.jl
 
@@ -40,12 +40,12 @@ Run the iLQG Function to find an optimal trajectory For the "pendulum on a cart 
 `doplot = true`                 : Plot results
 """
 function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
-                        Q      = Diagonal([10.,1,2,1]), # State weight matrix
-                        R      = 1.,                    # Control weight matrix
-                        lims   = 5.0*[-1 1],            # control limits,
-                        T      = 600,                   # Number of time steps
-                        doplot = true                   # Plot results
-                        )
+    Q      = Diagonal([10.,1,2,1]), # State weight matrix
+    R      = 1.,                    # Control weight matrix
+    lims   = 5.0*[-1 1],            # control limits,
+    T      = 600,                   # Number of time steps
+    doplot = true                   # Plot results
+    )
 
     N = T+1
     g = 9.82
@@ -62,30 +62,11 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
     L = lqr(A,B,Q,R) # Calculate the optimal state feedback
 
 
-    function fsys_closedloop(t,x,L,xd)
-        dx = copy(x)
-        dx[1] -= pi
-        u = -(L*dx)[1]
-        xd[1] = x[2]
-        xd[2] = -g/l * sin(x[1]) + u/l * cos(x[1]) - d*x[2]
-        xd[3] = x[4]
-        xd[4] = u
-    end
-
-    function fsys(t,x,u,xd)
-        xd[1] = x[2]
-        xd[2] = -g/l * sin(x[1]) + u/l * cos(x[1]) - d*x[2]
-        xd[3] = x[4]
-        xd[4] = u
-    end
-
-    dfvec = zeros(4)
     function dfsys(x,u)
-        dfvec[1] = x[1]+h*x[2]
-        dfvec[2] = x[2]+h*(-g/l*sin(x[1])+u[1]/l*cos(x[1])- d*x[2])
-        dfvec[3] = x[3]+h*x[4]
-        dfvec[4] = x[4]+h*u[1]
-        dfvec
+        SVector(x[1]+h*x[2],
+        x[2]+h*(-g/l*sin(x[1])+u[1]/l*cos(x[1])- d*x[2]),
+        x[3]+h*x[4],
+        x[4]+h*u[1])
     end
 
 
@@ -120,9 +101,9 @@ function demo_pendcart(;x0 = [π-0.6,0,0,0], goal = [π,0,0,0],
 
 
     fxc = Float64[0 1 0 0;
-                0 0 0 0;
-                0 0 0 1;
-                0 0 0 0]
+    0 0 0 0;
+    0 0 0 1;
+    0 0 0 0]
     fuc = reshape(Float64[0, 0, 0, 1], 4,1)
     fxc = [copy(fxc) for i = 1:N]
     fuc = [copy(fuc) for i = 1:N]

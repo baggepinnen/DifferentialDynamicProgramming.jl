@@ -50,7 +50,7 @@ eye(P,n) = Matrix{P}(I,n,n)
 GaussianPolicy(P) = GaussianPolicy(0,0,0,emptyMat3(P),emptyMat2(P),emptyMat3(P),emptyMat3(P))
 # GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(P,m,n,T),zeros(P,m,T),cat([eye(P,m) for t=1:T]..., dims=3),cat([eye(P,m) for t=1:T]..., dims=3))
 
-GaussianPolicy(P,T,n,m) = GaussianPolicy(0,0,0,zeros(SMatrix{m,n,P},T),zeros(SVector{m,P},T),zeros(SMatrix{m,m,P},T),zeros(SMatrix{m,m,P},T))
+GaussianPolicy(P,T,n,m) = GaussianPolicy(T,n,m,zeros(SMatrix{m,n,P},T),zeros(SVector{m,P},T),zeros(SMatrix{m,m,P},T),zeros(SMatrix{m,m,P},T))
 Base.isempty(gp::GaussianPolicy) = gp.T == gp.n == gp.m == 0
 Base.length(gp::GaussianPolicy) = gp.T
 
