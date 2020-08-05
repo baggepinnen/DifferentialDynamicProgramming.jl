@@ -9,15 +9,15 @@ function ∇kl(traj_prev)
     isempty(traj_prev) && (return (0,0,0,0,0))
     debug("Calculating KL cost addition terms")
     m,n,T  = traj_prev.m,traj_prev.n,traj_prev.T
-    cx,cu,cxx,cuu,cxu = zeros(n,T),zeros(m,T),zeros(n,n,T),zeros(m,m,T),zeros(m,n,T)
+    cx,cu,cxx,cuu,cxu = [zeros(n) for _ in 1:T],[zeros(m) for _ in 1:T],[zeros(n,n) for _ in 1:T],[zeros(m,m) for _ in 1:T],[zeros(m,n) for _ in 1:T]
     for t in 1:T
-        K, k       = traj_prev.K[:,:,t], traj_prev.k[:,t]
-        Σi         = traj_prev.Σi[:,:,t]
-        cx[:,t]    = K'*Σi*k
-        cu[:,t]    = -Σi*k
-        cxx[:,:,t] = K'*Σi*K
-        cuu[:,:,t] = Σi
-        cxu[:,:,t] = -Σi*K # https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L355
+        K, k       = traj_prev.K[t], traj_prev.k[t]
+        Σi         = traj_prev.Σi[t]
+        cx[t]    = K'*Σi*k
+        cu[t]    = -Σi*k
+        cxx[t] = K'*Σi*K
+        cuu[t] = Σi
+        cxu[t] = -Σi*K # https://github.com/cbfinn/gps/blob/master/python/gps/algorithm/traj_opt/traj_opt_lqr_python.py#L355
     end
     return cx,cu,cxx,cxu,cuu
 end
@@ -43,16 +43,16 @@ function kl_div(xnew,xold, Σ_new, traj_new, traj_prev)
     # m     = traj_new.m
     kldiv = zeros(T)
     for t = 1:T
-        μt    = μ_new[:,t]
-        Σt    = Σ_new[:,:,t]
-        Kp    = traj_prev.K[:,:,t]
-        Kn    = traj_new.K[:,:,t]
-        kp    = traj_prev.k[:,t]
-        kn    = traj_new.k[:,t] + kp # unew must be added here
-        Σp    = traj_prev.Σ[:,:,t]
-        Σn    = traj_new.Σ[:,:,t]
-        Σip   = traj_prev.Σi[:,:,t]
-        Σin   = traj_new.Σi[:,:,t]
+        μt    = μ_new[t]
+        Σt    = Σ_new[t]
+        Kp    = traj_prev.K[t]
+        Kn    = traj_new.K[t]
+        kp    = traj_prev.k[t]
+        kn    = traj_new.k[t] + kp # unew must be added here
+        Σp    = traj_prev.Σ[t]
+        Σn    = traj_new.Σ[t]
+        Σip   = traj_prev.Σi[t]
+        Σin   = traj_new.Σi[t]
         Mp,vp = KLmv(Σip,Kp,kp)
         Mn,vn = KLmv(Σin,Kn,kn)
         cp    = .5*kp'Σip*kp
@@ -72,16 +72,16 @@ function kl_div_wiki(xnew,xold, Σ_new, traj_new, traj_prev)
     T,m,n     = traj_new.T, traj_new.m, traj_new.n
     kldiv = zeros(T)
     for t = 1:T
-        μt     = μ_new[:,t]
-        Σt     = Σ_new[1:n,1:n,t]
-        Kp     = traj_prev.K[:,:,t]
-        Kn     = traj_new.K[:,:,t]
-        kp     = traj_prev.k[:,t]
-        kn     = traj_new.k[:,t] #traj_new.k[:,t] contains kp already
-        Σp     = traj_prev.Σ[:,:,t]
-        Σn     = traj_new.Σ[:,:,t]
-        Σip    = traj_prev.Σi[:,:,t]
-        Σin    = traj_new.Σi[:,:,t]
+        μt     = μ_new[t]
+        Σt     = Σ_new[t][1:n,1:n]
+        Kp     = traj_prev.K[t]
+        Kn     = traj_new.K[t]
+        kp     = traj_prev.k[t]
+        kn     = traj_new.k[t] #traj_new.k[t] contains kp already
+        Σp     = traj_prev.Σ[t]
+        Σn     = traj_new.Σ[t]
+        Σip    = traj_prev.Σi[t]
+        Σin    = traj_new.Σi[t]
         dim    = m
         k_diff = kp-kn
         K_diff = Kp-Kn
@@ -101,7 +101,7 @@ end
 
 
 
-entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[:,:,t])/2 for t = 1:traj.T) + traj.m*log(2π)/2
+entropy(traj::GaussianPolicy) = mean(logdet(traj.Σ[t])/2 for t = 1:traj.T) + traj.m*log(2π)/2
 
 """
 new_η, satisfied, divergence = calc_η(xnew,xold,sigmanew,η, traj_new, traj_prev, kl_step)

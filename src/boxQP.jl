@@ -70,9 +70,8 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
     iter = 1
     while iter <= maxIter
 
-        if result != 0
-            break
-        end
+        result == 0 || break
+
 
         # debug("# check relative improvement")
         if iter>1 && (oldvalue - value) < minRelImprove*abs(oldvalue)
@@ -90,7 +89,7 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
         #         clamped[(x[:,1] .== lower)&(grad[:,1].>0)]   = true
         #         clamped[(x[:,1] .== upper)&(grad[:,1].<0)]   = true
         for i = 1:n
-            clamped[i]   = ((x[i,1] == lower[i])&&(grad[i,1]>0)) || ((x[i,1] == upper[i])&&(grad[i,1]<0))
+            clamped[i]   = ((x[i] == lower[i]) && (grad[i]>0)) || ((x[i] == upper[i]) && (grad[i]<0))
         end
         free = .!clamped
 
@@ -104,7 +103,7 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
         if iter == 1
             factorize = true
         else
-            factorize = any(old_clamped != clamped)
+            factorize = any(old_clamped .!= clamped)
         end
 
         if factorize
@@ -125,7 +124,7 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
 
         # debug("# get search direction")
         grad_clamped   = g  + H*(x.*clamped)
-        search         = zeros(n,1)
+        search         = zeros(n)
         search[free]   = -Hfree\(Hfree'\grad_clamped[free]) - x[free]
 
         # debug("# check for descent direction")
@@ -138,13 +137,13 @@ function boxQP(H,g,lower,upper,x0::AbstractVector;
         step  = 1
         nstep = 0
         xc    = clamp.(x+step*search,lower,upper)
-        vc    = (xc'*g + 0.5*xc'*H*xc)[1]
+        vc    = (xc'g + 0.5*xc'H*xc)[1]
         while (vc - oldvalue)/(step*sdotg) < Armijo
             step  = step*stepDec
             nstep += 1
             xc    = clamp.(x+step*search,lower,upper)
-            vc    = (xc'*g + 0.5*xc'*H*xc)[1]
-            if step<minStep
+            vc    = (xc'g + 0.5*xc'H*xc)[1]
+            if step < minStep
                 result = 2
                 break
             end
@@ -195,5 +194,16 @@ function demoQP(;kwargs...)
     lower 	= -ones(n)
     upper 	=  ones(n)
     @time boxQP(H, g, lower, upper, randn(n);print=1, kwargs...)
+
+end
+
+function demoQPstatic(;kwargs...)
+    n 		= 2
+    g 		= SVector{n,Float64}(randn(n))
+    H 		= SMatrix{n,n,Float64}(randn(n,n))
+    H 		= H*H'
+    lower 	= -ones(n)
+    upper 	=  ones(n)
+    @time boxQP(H, g, lower, upper, SVector{n,Float64}(randn(n));print=1, kwargs...)
 
 end
