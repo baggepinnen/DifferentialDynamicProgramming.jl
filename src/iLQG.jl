@@ -90,8 +90,7 @@ then size(x0)==(n, N) can be provided and cost set accordingly.
 where m is the dimension of the control and N is the number of state
 transitions.
 
-Outputs
-=======
+# Outputs
 `x` - the optimal state trajectory found by the algorithm.
 size(x)==(n, N)
 
@@ -113,6 +112,9 @@ iteration, the columns of trace are
 `[iter λ α g_norm Δcost z sum(cost) dλ]`
 see below for details.
 
+# Tips
+To get a smoother control signal trajectory, you may try to reduce the maximum `α` (at the expense of more iterations).
+
 # Keyword arguments
 `lims`,           [],            control limits\n
 `α`,              logspace(0,-3,11), backtracking coefficients\n
@@ -123,7 +125,7 @@ see below for details.
 `dλ`,        1,             initial value for dλ\n
 `λfactor`,   1.6,           λ scaling factor\n
 `λmax`,      1e10,          λ maximum value\n
-`λmin`,      1e-6,          below this value λ = 0\n
+`λmin`,      1e-6,          λ minimum value\n
 `regType`,        1,             regularization type 1: q_uu+λ*I 2: V_xx+λ*I\n
 `reduce_ratio_min`,           0,             minimal accepted reduction ratio\n
 `diff_fun`,         -,             user-defined diff for sub-space optimization\n
@@ -156,7 +158,8 @@ function iLQG(f,costfun,df, x0, u0;
     verbosity        = 2,
     plot_fun         = x->0,
     cost             = [],
-    traj_prev        = 0
+    traj_prev        = 0,
+    print_head       = 10, # print headings every print_head lines
     )
     debug("Entering iLQG")
     local fx,fu,fxx,fxu,fuu,cx,cu,cxx,cxu,cuu,xnew,unew,costnew,g_norm,Vx,Vxx,dV,αi
@@ -191,7 +194,7 @@ function iLQG(f,costfun,df, x0, u0;
         debug("# pre-rolled initial forward pass, initial traj provided")
         x        = x0
         diverge  = false
-        isempty(cost) && error("Initial trajectory supplied, initial cost must also be supplied")
+        isempty(cost) && (cost = costfun(x, u))
     else
         error("pre-rolled initial trajectory must be of correct length (size(x0,2) == N)")
     end
@@ -210,7 +213,6 @@ function iLQG(f,costfun,df, x0, u0;
     flg_change         = true
     Δcost              = 0.
     expected_reduction = 0.
-    print_head         = 10 # print headings every print_head lines
     last_head          = print_head
     t_start            = time()
     verbosity > 0 && @printf("\n---------- begin iLQG ----------\n")

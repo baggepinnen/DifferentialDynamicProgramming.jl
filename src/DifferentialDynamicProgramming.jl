@@ -17,7 +17,7 @@ function __init__()
         Plots.plot!(p,cost,c=:black,linewidth=3, title="Cost", xlabel="Time step", subplot=2, show=false)
         Plots.plot!(p,u',title="Control signals", xlabel="Time step", subplot=3, show=false)
         Plots.plot!(p,totalcost,title="Total cost", xlabel="Iteration", subplot=4, show=false)
-        Plots.gui()
+        display(Plots.current())
     end
     @eval function plotstuff_pendcart(x00, u00, x,u,cost00,cost,otrace)
         cp = Plots.plot(layout=(1,3))
@@ -31,7 +31,7 @@ function __init__()
         filter!(x->x>0,cost)
         Plots.plot!(cp, get(otrace, :cost)[2], yscale=:log10,xscale=:log10, title="Total cost", xlabel="Iteration", legend=false, subplot=3)
         Plots.plot(sp,cp)
-        Plots.gui()
+        display(Plots.current())
     end
 end
 end
