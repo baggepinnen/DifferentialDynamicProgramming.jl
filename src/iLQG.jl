@@ -295,7 +295,7 @@ function iLQG(f,costfun,df, x0, u0;
                 last_head += 1
             end
             dλ = min(dλ / λfactor, 1/ λfactor)
-            λ *= dλ
+            λ = max(λ * dλ,  λmin)
             #  accept changes
             x,u,cost  = copy(xnew),copy(unew),copy(costnew)
             traj_new.k = copy(u)
