@@ -6,7 +6,7 @@
 - f: forward dynamics `x(k+1)  = f(x(k), u(k), k)`
 - `cnew = costfun(xnew, unew)`
 """
-function forward_pass(traj_new, x0,u,x,α,f,costfun,lims,diff)
+@views function forward_pass(traj_new, x0,u,x,α,f,costfun,lims,diff)
     n         = size(x0,1)
     m,N       = size(u)
     xnew      = Array{eltype(x0)}(undef,n,N)
@@ -34,7 +34,7 @@ end
 
 
 
-function forward_covariance(model, x, u, traj)
+@views function forward_covariance(model, x, u, traj)
     fx,fu,fxx,fxu,fuu = df(model, x, u)
     n        = size(fx,1)
     m        = size(fu,2)
@@ -43,7 +43,7 @@ function forward_covariance(model, x, u, traj)
     Σ0       = R1 # TODO: I was lazy here
     ix = 1:n
     iu = n+1:n+m
-    sigmanew = Array{Float64}(undef,n+m,n+m,N)
+    sigmanew = Array{eltype(x)}(undef,n+m,n+m,N)
     sigmanew[ix,ix,1] = Σ0
     for i = 1:N-1
         K,Σ = traj.K[:,:,i], traj.Σ[:,:,i]
