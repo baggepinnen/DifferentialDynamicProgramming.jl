@@ -178,7 +178,7 @@ end
 
 function back_pass(cx,cu,cxx::AbstractArray{T,3},cxu,cuu,fx::AbstractArray{T,3},fu,λ,regType,lims,x,u) where T # quadratic timeVariant cost, linear time variant dynamics
     m          = size(u,1)
-    n,N        = size(fx,1,3)
+    n,N        = size(fx, 1), size(fx, 3)
 
     @assert size(cx) == (n, N)
     @assert size(cu) == (m, N)
